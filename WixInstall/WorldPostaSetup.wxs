@@ -14,21 +14,33 @@
       Compressed="yes"
       InstallScope="perMachine"
       Description="WorldPosta Authenticator for Windows RDP"
-      Manufacturer="WorldPosta"/>
+      Manufacturer="WorldPosta"
+      Platform="x64"/>
 
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed."/>
     <MediaTemplate EmbedCab="yes"/>
+
+    <Condition Message="You need to be an administrator to install this product.">
+      Privileged
+    </Condition>
+
+    <Condition Message="This installer requires a 64-bit version of Windows.">
+      VersionNT64
+    </Condition>
 
     <!-- Properties for API configuration -->
     <Property Id="WORLDPOSTA_ENDPOINT" Value="https://api.worldposta.com"/>
     <Property Id="WORLDPOSTA_INTEGRATION_KEY" Secure="yes"/>
     <Property Id="WORLDPOSTA_SECRET_KEY" Hidden="yes" Secure="yes"/>
-    <Property Id="ENABLE_RDP" Value="1"/>
-    <Property Id="ENABLE_LOCAL" Value="0"/>
+    <Property Id="CPUS_LOGON" Value="3d"/>
+    <Property Id="CPUS_UNLOCK" Value="3d"/>
 
     <Feature Id="ProductFeature" Title="WorldPosta Authenticator" Level="1">
-      <ComponentGroupRef Id="ProductComponents"/>
-      <ComponentGroupRef Id="RegistryComponents"/>
+      <ComponentRef Id="CredentialProviderDLL"/>
+      <ComponentRef Id="CredentialProviderFilterDLL"/>
+      <ComponentRef Id="RegistryCPComponent"/>
+      <ComponentRef Id="RegistryCPFComponent"/>
+      <ComponentRef Id="RegistrySettingsComponent"/>
     </Feature>
 
     <UIRef Id="WorldPostaUI"/>
@@ -45,35 +57,80 @@
   </Fragment>
 
   <Fragment>
-    <ComponentGroup Id="ProductComponents" Directory="System64Folder">
-      <Component Id="CredentialProviderDLL" Guid="11111111-2222-3333-4444-555555555555" Win64="yes">
-        <File Id="WorldPostaCredentialProvider.dll"
-              Source="..\x64\Release\multiOTPCredentialProvider.dll"
-              Name="WorldPostaCredentialProvider.dll"
-              KeyPath="yes"/>
-      </Component>
-    </ComponentGroup>
+    <!-- Credential Provider DLL -->
+    <Component Id="CredentialProviderDLL" Directory="System64Folder" Guid="9A50EF1C-E1A5-4C53-9CE8-B0E7638257EC" Win64="yes">
+      <File Id="CredentialDLL"
+            Name="multiOTPCredentialProvider.dll"
+            Source="..\x64\Release\multiOTPCredentialProvider.dll"
+            KeyPath="yes"/>
+    </Component>
+
+    <!-- Credential Provider Filter DLL -->
+    <Component Id="CredentialProviderFilterDLL" Directory="System64Folder" Guid="FF8E4CA3-7FB9-41C4-8B26-D5401541E543" Win64="yes">
+      <File Id="FilterDLL"
+            Name="multiOTPCredentialProviderFilter.dll"
+            Source="..\x64\Release\multiOTPCredentialProviderFilter.dll"
+            KeyPath="yes"/>
+    </Component>
   </Fragment>
 
   <Fragment>
-    <ComponentGroup Id="RegistryComponents" Directory="INSTALLFOLDER">
-      <Component Id="RegistryCredentialProvider" Guid="22222222-3333-4444-5555-666666666666" Win64="yes">
-        <RegistryKey Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}">
-          <RegistryValue Type="string" Value="WorldPostaCredentialProvider"/>
-          <RegistryValue Name="worldposta_api_endpoint" Type="string" Value="[WORLDPOSTA_ENDPOINT]"/>
-          <RegistryValue Name="worldposta_integration_key" Type="string" Value="[WORLDPOSTA_INTEGRATION_KEY]"/>
-          <RegistryValue Name="worldposta_secret_key" Type="string" Value="[WORLDPOSTA_SECRET_KEY]"/>
-          <RegistryValue Name="cpus_logon" Type="string" Value="[ENABLE_RDP]"/>
-        </RegistryKey>
-        <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{11A4894C-0968-40D0-840E-FAA4B8984916}">
-          <RegistryValue Type="string" Value="WorldPostaCredentialProvider"/>
-        </RegistryKey>
-        <RegistryKey Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}\InprocServer32">
-          <RegistryValue Type="string" Value="[System64Folder]WorldPostaCredentialProvider.dll"/>
+    <!-- Registry for Credential Provider -->
+    <Component Id="RegistryCPComponent" Directory="INSTALLFOLDER" Guid="C19202C5-AAB4-409F-A1D6-E12048959FE6" Win64="yes">
+      <RegistryKey Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}" ForceCreateOnInstall="yes">
+        <RegistryValue Type="string" Value="WorldPostaCredentialProvider"/>
+        <RegistryKey Key="InprocServer32" ForceCreateOnInstall="yes">
+          <RegistryValue Type="string" Value="multiOTPCredentialProvider.dll"/>
           <RegistryValue Name="ThreadingModel" Type="string" Value="Apartment"/>
         </RegistryKey>
-      </Component>
-    </ComponentGroup>
+      </RegistryKey>
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{11A4894C-0968-40D0-840E-FAA4B8984916}" ForceCreateOnInstall="yes">
+        <RegistryValue Type="string" Value="WorldPostaCredentialProvider"/>
+      </RegistryKey>
+    </Component>
+
+    <!-- Registry for Credential Provider Filter -->
+    <Component Id="RegistryCPFComponent" Directory="INSTALLFOLDER" Guid="64D2D8E0-495D-48C6-A7EA-7AEC19045ECF" Win64="yes">
+      <RegistryKey Root="HKCR" Key="CLSID\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D979}" ForceCreateOnInstall="yes">
+        <RegistryValue Type="string" Value="WorldPostaCredentialProviderFilter"/>
+        <RegistryKey Key="InprocServer32" ForceCreateOnInstall="yes">
+          <RegistryValue Type="string" Value="multiOTPCredentialProviderFilter.dll"/>
+          <RegistryValue Name="ThreadingModel" Type="string" Value="Apartment"/>
+        </RegistryKey>
+      </RegistryKey>
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Provider Filters\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D979}" ForceCreateOnInstall="yes">
+        <RegistryValue Type="string" Value="WorldPostaCredentialProviderFilter"/>
+      </RegistryKey>
+    </Component>
+
+    <!-- Registry Settings -->
+    <Component Id="RegistrySettingsComponent" Directory="INSTALLFOLDER" Guid="3B987442-F126-4FDD-A3F8-178C7850E391" Win64="yes">
+      <RegistryKey Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}" ForceCreateOnInstall="yes">
+        <!-- WorldPosta API Settings -->
+        <RegistryValue Name="worldposta_api_endpoint" Type="string" Value="[WORLDPOSTA_ENDPOINT]"/>
+        <RegistryValue Name="worldposta_integration_key" Type="string" Value="[WORLDPOSTA_INTEGRATION_KEY]"/>
+        <RegistryValue Name="worldposta_secret_key" Type="string" Value="[WORLDPOSTA_SECRET_KEY]"/>
+
+        <!-- Login scenarios: 3d = both local and remote with 2FA -->
+        <RegistryValue Name="cpus_logon" Type="string" Value="[CPUS_LOGON]"/>
+        <RegistryValue Name="cpus_unlock" Type="string" Value="[CPUS_UNLOCK]"/>
+
+        <!-- Two-step configuration -->
+        <RegistryValue Name="two_step_hide_otp" Type="string" Value="1"/>
+        <RegistryValue Name="two_step_send_password" Type="string" Value="0"/>
+        <RegistryValue Name="two_step_send_empty_password" Type="string" Value="0"/>
+
+        <!-- UI Text -->
+        <RegistryValue Name="login_text" Type="string" Value="WorldPosta Login"/>
+        <RegistryValue Name="otp_text" Type="string" Value="One-time password"/>
+        <RegistryValue Name="otp_hint_text" Type="string" Value="Enter your OTP from WorldPosta app"/>
+        <RegistryValue Name="otp_fail_text" Type="string" Value="Invalid one-time password"/>
+
+        <!-- Timeouts -->
+        <RegistryValue Name="multiOTPTimeout" Type="integer" Value="60"/>
+        <RegistryValue Name="multiOTPServerTimeout" Type="integer" Value="10"/>
+      </RegistryKey>
+    </Component>
   </Fragment>
 
 </Wix>
