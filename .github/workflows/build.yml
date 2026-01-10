@@ -94,7 +94,7 @@ jobs:
         path: stable
 
     - name: Install WiX Toolset
-      run: choco install wixtoolset --version=3.11.2 -y
+      run: choco install wixtoolset -y --force
 
     - name: Prepare installer files
       run: |
@@ -111,10 +111,15 @@ jobs:
 
     - name: Build MSI Installer
       working-directory: WixInstall
-      shell: cmd
+      shell: pwsh
       run: |
-        "C:\Program Files (x86)\WiX Toolset v3.11\bin\candle.exe" WorldPostaSetup.wxs WorldPostaUI.wxs -out obj\ -ext WixUIExtension
-        "C:\Program Files (x86)\WiX Toolset v3.11\bin\light.exe" obj\WorldPostaSetup.wixobj obj\WorldPostaUI.wixobj -out WorldPostaAuthenticator.msi -ext WixUIExtension -sval
+        $wixPath = Get-ChildItem "C:\Program Files (x86)\WiX Toolset*\bin" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $wixPath) {
+          $wixPath = "C:\Program Files (x86)\WiX Toolset v3.14\bin"
+        }
+        Write-Host "Using WiX at: $wixPath"
+        & "$wixPath\candle.exe" WorldPostaSetup.wxs WorldPostaUI.wxs -out obj\ -ext WixUIExtension
+        & "$wixPath\light.exe" obj\WorldPostaSetup.wixobj obj\WorldPostaUI.wixobj -out WorldPostaAuthenticator.msi -ext WixUIExtension -sval
 
     - name: Upload Installer
       uses: actions/upload-artifact@v4
