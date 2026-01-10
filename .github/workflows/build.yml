@@ -15,6 +15,14 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    - name: Install ATL/MFC components
+      shell: pwsh
+      run: |
+        $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $vsInstallPath = & $vsWhere -latest -property installationPath
+        $vsInstaller = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
+        & $vsInstaller modify --installPath $vsInstallPath --add Microsoft.VisualStudio.Component.VC.ATL --quiet --norestart --wait
+
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
 
@@ -27,7 +35,7 @@ jobs:
       shell: cmd
       run: |
         call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        msbuild multiOTPCredentialProvider.sln /p:Configuration=Release /p:Platform=x64 /t:Build /m
+        msbuild multiOTPCredentialProvider.sln /p:Configuration=Release /p:Platform=x64 /t:Build /m /p:VCToolsVersion=14.43
 
     - name: List build outputs
       run: |
