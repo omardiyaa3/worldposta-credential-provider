@@ -1,0 +1,27 @@
+# Build outputs
+x64/
+x86/
+*.obj
+*.pdb
+*.lib
+*.exp
+*.ilk
+
+# Visual Studio
+.vs/
+*.suo
+*.sln.docstates
+
+# Build logs
+*.log
+*.tlog/
+
+# WiX outputs
+WixInstall/obj/
+WixInstall/bin/
+*.wixobj
+*.wixpdb
+
+# OS files
+.DS_Store
+Thumbs.db

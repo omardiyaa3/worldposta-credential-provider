@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <UI Id="WorldPostaUI">
+      <UIRef Id="WixUI_Common"/>
+
+      <TextStyle Id="WixUI_Font_Normal" FaceName="Tahoma" Size="8"/>
+      <TextStyle Id="WixUI_Font_Bigger" FaceName="Tahoma" Size="12"/>
+      <TextStyle Id="WixUI_Font_Title" FaceName="Tahoma" Size="9" Bold="yes"/>
+
+      <Property Id="DefaultUIFont" Value="WixUI_Font_Normal"/>
+
+      <DialogRef Id="ErrorDlg"/>
+      <DialogRef Id="FatalError"/>
+      <DialogRef Id="FilesInUse"/>
+      <DialogRef Id="MsiRMFilesInUse"/>
+      <DialogRef Id="PrepareDlg"/>
+      <DialogRef Id="ProgressDlg"/>
+      <DialogRef Id="ResumeDlg"/>
+      <DialogRef Id="UserExit"/>
+
+      <!-- API Configuration Dialog -->
+      <Dialog Id="APIConfigDlg" Width="370" Height="270" Title="WorldPosta Configuration">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)"/>
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}API Configuration"/>
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="Enter your WorldPosta API credentials"/>
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0"/>
+
+        <Control Id="APIEndpointLabel" Type="Text" X="20" Y="60" Width="100" Height="10" NoPrefix="yes" Text="API Endpoint:"/>
+        <Control Id="APIEndpointEdit" Type="Edit" X="20" Y="72" Width="330" Height="18" Property="WORLDPOSTA_ENDPOINT"/>
+
+        <Control Id="IntegrationKeyLabel" Type="Text" X="20" Y="100" Width="100" Height="10" NoPrefix="yes" Text="Integration Key:"/>
+        <Control Id="IntegrationKeyEdit" Type="Edit" X="20" Y="112" Width="330" Height="18" Property="WORLDPOSTA_INTEGRATION_KEY"/>
+
+        <Control Id="SecretKeyLabel" Type="Text" X="20" Y="140" Width="100" Height="10" NoPrefix="yes" Text="Secret Key:"/>
+        <Control Id="SecretKeyEdit" Type="Edit" X="20" Y="152" Width="330" Height="18" Property="WORLDPOSTA_SECRET_KEY" Password="yes"/>
+
+        <Control Id="EnableRDPCheck" Type="CheckBox" X="20" Y="185" Width="250" Height="17" Property="ENABLE_RDP" CheckBoxValue="1" Text="Require 2FA for RDP connections"/>
+        <Control Id="EnableLocalCheck" Type="CheckBox" X="20" Y="205" Width="250" Height="17" Property="ENABLE_LOCAL" CheckBoxValue="1" Text="Require 2FA for local login"/>
+
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0"/>
+
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="Back">
+          <Publish Event="NewDialog" Value="WelcomeDlg">1</Publish>
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="Install">
+          <Publish Event="NewDialog" Value="VerifyReadyDlg">WORLDPOSTA_INTEGRATION_KEY</Publish>
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="Cancel">
+          <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="APIConfigDlg">NOT Installed</Publish>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="VerifyReadyDlg">Installed AND PATCH</Publish>
+
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="APIConfigDlg" Order="1">NOT Installed</Publish>
+      <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="MaintenanceTypeDlg" Order="2">Installed AND NOT PATCH</Publish>
+
+      <Publish Dialog="ExitDialog" Control="Finish" Event="EndDialog" Value="Return" Order="999">1</Publish>
+
+      <Publish Dialog="MaintenanceWelcomeDlg" Control="Next" Event="NewDialog" Value="MaintenanceTypeDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RepairButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="RemoveButton" Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+      <Publish Dialog="MaintenanceTypeDlg" Control="Back" Event="NewDialog" Value="MaintenanceWelcomeDlg">1</Publish>
+
+    </UI>
+    <UIRef Id="WixUI_ErrorProgressText"/>
+  </Fragment>
+</Wix>

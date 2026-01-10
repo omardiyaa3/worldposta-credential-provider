@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+
+  <Product
+    Id="*"
+    Name="WorldPosta Authenticator"
+    Language="1033"
+    Version="1.0.0.0"
+    Manufacturer="WorldPosta"
+    UpgradeCode="5FA01A5A-D2FF-428E-BA6B-417D1B13743C">
+
+    <Package
+      InstallerVersion="300"
+      Compressed="yes"
+      InstallScope="perMachine"
+      Description="WorldPosta Authenticator for Windows RDP"
+      Manufacturer="WorldPosta"/>
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed."/>
+    <MediaTemplate EmbedCab="yes"/>
+
+    <!-- Properties for API configuration -->
+    <Property Id="WORLDPOSTA_ENDPOINT" Value="https://api.worldposta.com"/>
+    <Property Id="WORLDPOSTA_INTEGRATION_KEY" Value=""/>
+    <Property Id="WORLDPOSTA_SECRET_KEY" Value="" Hidden="yes"/>
+    <Property Id="ENABLE_RDP" Value="1"/>
+    <Property Id="ENABLE_LOCAL" Value="0"/>
+
+    <Feature Id="ProductFeature" Title="WorldPosta Authenticator" Level="1">
+      <ComponentGroupRef Id="ProductComponents"/>
+      <ComponentGroupRef Id="RegistryComponents"/>
+    </Feature>
+
+    <UIRef Id="WorldPostaUI"/>
+
+  </Product>
+
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="WorldPosta"/>
+      </Directory>
+      <Directory Id="System64Folder"/>
+    </Directory>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="ProductComponents" Directory="System64Folder">
+      <Component Id="CredentialProviderDLL" Guid="11111111-2222-3333-4444-555555555555" Win64="yes">
+        <File Id="WorldPostaCredentialProvider.dll"
+              Source="..\x64\Release\multiOTPCredentialProvider.dll"
+              Name="WorldPostaCredentialProvider.dll"
+              KeyPath="yes"/>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+  <Fragment>
+    <ComponentGroup Id="RegistryComponents" Directory="INSTALLFOLDER">
+      <Component Id="RegistryCredentialProvider" Guid="22222222-3333-4444-5555-666666666666" Win64="yes">
+        <RegistryKey Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}">
+          <RegistryValue Type="string" Value="WorldPostaCredentialProvider"/>
+          <RegistryValue Name="worldposta_api_endpoint" Type="string" Value="[WORLDPOSTA_ENDPOINT]"/>
+          <RegistryValue Name="worldposta_integration_key" Type="string" Value="[WORLDPOSTA_INTEGRATION_KEY]"/>
+          <RegistryValue Name="worldposta_secret_key" Type="string" Value="[WORLDPOSTA_SECRET_KEY]"/>
+          <RegistryValue Name="cpus_logon" Type="string" Value="[ENABLE_RDP]"/>
+        </RegistryKey>
+        <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{11A4894C-0968-40D0-840E-FAA4B8984916}">
+          <RegistryValue Type="string" Value="WorldPostaCredentialProvider"/>
+        </RegistryKey>
+        <RegistryKey Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}\InprocServer32">
+          <RegistryValue Type="string" Value="[System64Folder]WorldPostaCredentialProvider.dll"/>
+          <RegistryValue Name="ThreadingModel" Type="string" Value="Apartment"/>
+        </RegistryKey>
+      </Component>
+    </ComponentGroup>
+  </Fragment>
+
+</Wix>

@@ -1,0 +1,64 @@
+name: Build WorldPosta Credential Provider
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Setup NuGet
+      uses: NuGet/setup-nuget@v2
+
+    - name: Restore NuGet packages
+      run: nuget restore multiOTPCredentialProvider.sln
+
+    - name: Build Release x64
+      run: msbuild multiOTPCredentialProvider.sln /p:Configuration=Release /p:Platform=x64 /t:Rebuild
+
+    - name: Upload Release Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: WorldPostaCredentialProvider-x64
+        path: |
+          x64/Release/*.dll
+
+  build-installer:
+    runs-on: windows-latest
+    needs: build
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download Release Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: WorldPostaCredentialProvider-x64
+        path: x64/Release
+
+    - name: Install WiX Toolset
+      run: choco install wixtoolset -y
+
+    - name: Build MSI Installer
+      working-directory: WixInstall
+      run: |
+        & "C:\Program Files (x86)\WiX Toolset v3.14\bin\candle.exe" WorldPostaSetup.wxs WorldPostaUI.wxs -out obj\
+        & "C:\Program Files (x86)\WiX Toolset v3.14\bin\light.exe" obj\WorldPostaSetup.wixobj obj\WorldPostaUI.wixobj -out WorldPostaAuthenticator.msi -ext WixUIExtension
+
+    - name: Upload Installer
+      uses: actions/upload-artifact@v4
+      with:
+        name: WorldPostaAuthenticator-Installer
+        path: WixInstall/WorldPostaAuthenticator.msi
