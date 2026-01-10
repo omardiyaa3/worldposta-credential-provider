@@ -75,7 +75,7 @@ HRESULT CCredentialProviderFilter::Filter(CREDENTIAL_PROVIDER_USAGE_SCENARIO cpu
 		return S_OK;
 	}
 
-	MultiOTPRegistryReader rr(L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}\\");
+	MultiOTPRegistryReader rr(L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}\\");
 	MultiOTPRegistryReader rcp(L"");
 	std::wstring provider_name;
 	std::wstring included_providers_id;

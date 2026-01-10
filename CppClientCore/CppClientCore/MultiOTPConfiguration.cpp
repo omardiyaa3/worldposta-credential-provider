@@ -29,8 +29,8 @@
 
 using namespace std;
 
-const wstring Configuration::registryPath = L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}\\";
-const wstring Configuration::registryRealmPath = L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}\\realm-mapping";
+const wstring Configuration::registryPath = L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}\\";
+const wstring Configuration::registryRealmPath = L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}\\realm-mapping";
 
 MultiOTPConfiguration::MultiOTPConfiguration() : Configuration()
 {
