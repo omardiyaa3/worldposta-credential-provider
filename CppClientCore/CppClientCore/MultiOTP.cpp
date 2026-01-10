@@ -34,11 +34,6 @@
 
 using namespace std;
 
-// WorldPosta API configuration registry keys
-#define CONF_WORLDPOSTA_ENDPOINT L"worldposta_api_endpoint"
-#define CONF_WORLDPOSTA_INTEGRATION_KEY L"worldposta_integration_key"
-#define CONF_WORLDPOSTA_SECRET_KEY L"worldposta_secret_key"
-
 // Global variables for storing push request state
 static std::string g_lastPushRequestId;
 static std::wstring g_lastPushUsername;
@@ -276,9 +271,9 @@ HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readRegistryValueString(CONF_WORLDPOSTA_ENDPOINT, &endpoint, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_INTEGRATION_KEY, &integrationKey, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_SECRET_KEY, &secretKey, L"") < 2) {
+    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
         if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found in registry");
         error_code = 99;
         return PI_AUTH_FAILURE;
@@ -348,11 +343,11 @@ HRESULT MultiOTP::userTokenType(const std::wstring& username, const std::wstring
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readRegistryValueString(CONF_WORLDPOSTA_ENDPOINT, &endpoint, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_INTEGRATION_KEY, &integrationKey, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_SECRET_KEY, &secretKey, L"") < 2) {
+    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
         if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found - user needs 2FA with TOTP");
-        return MULTIOTP_HAS_TOKEN; // Return 7 - user has TOTP token
+        return MULTIOTP_IS_WITH_TOKEN; // Return 7 - user has TOTP token
     }
 
     // WorldPosta users have both push and TOTP capability
@@ -369,9 +364,9 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readRegistryValueString(CONF_WORLDPOSTA_ENDPOINT, &endpoint, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_INTEGRATION_KEY, &integrationKey, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_SECRET_KEY, &secretKey, L"") < 2) {
+    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
         if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found");
         return E_FAIL;
     }
@@ -425,9 +420,9 @@ HRESULT MultiOTP::checkPushStatus()
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readRegistryValueString(CONF_WORLDPOSTA_ENDPOINT, &endpoint, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_INTEGRATION_KEY, &integrationKey, L"") < 2 ||
-        readRegistryValueString(CONF_WORLDPOSTA_SECRET_KEY, &secretKey, L"") < 2) {
+    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
         return E_FAIL;
     }
 
