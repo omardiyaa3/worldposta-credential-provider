@@ -202,11 +202,20 @@ HRESULT CCredential::UnAdvise()
 HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 {
 	DebugPrint(__FUNCTION__);
+	DebugPrint("=== SetSelected START ===");
+	DebugPrint(L"doAutoLogon: " + std::to_wstring(_config->doAutoLogon));
+	DebugPrint(L"twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP));
+	DebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
+	DebugPrint(L"isRemoteSession: " + std::to_wstring(_config->isRemoteSession));
+	DebugPrint(L"Username: " + _config->credential.username);
+	DebugPrint(L"Domain: " + _config->credential.domain);
+
 	*pbAutoLogon = false;
 	HRESULT hr = S_OK;
 
 	if (_config->doAutoLogon)
 	{
+		DebugPrint("doAutoLogon is TRUE - will auto-submit");
 		*pbAutoLogon = TRUE;
 		_config->doAutoLogon = false;
 	}
@@ -234,15 +243,6 @@ HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 	if (_config->credential.passwordChanged)
 	{
 		*pbAutoLogon = TRUE;
-	}
-
-	// If we're already in second step mode (e.g., from NLA with serialized credentials),
-	// set up the second step UI to show OTP field and push button
-	if (_config->isSecondStep && _config->twoStepHideOTP && !_config->credential.passwordMustChange)
-	{
-		DebugPrint("SetSelected: Starting in second step mode (NLA), showing OTP/push UI");
-		_util.SetScenario(this, _pCredProvCredentialEvents, SCENARIO::SECOND_STEP);
-		return hr;
 	}
 
 	// Manage link display if it's in one step mode
@@ -916,6 +916,13 @@ void CCredential::PushAuthenticationCallback(bool success)
 HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 {
 	DebugPrint(__FUNCTION__);
+	DebugPrint("=== Connect START ===");
+	DebugPrint(L"twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP));
+	DebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
+	DebugPrint(L"bypassPrivacyIDEA: " + std::to_wstring(_config->bypassPrivacyIDEA));
+	DebugPrint(L"Username: " + _config->credential.username);
+	DebugPrint(L"Domain: " + _config->credential.domain);
+	DebugPrint(L"OTP field value: " + _config->credential.otp);
 
 	UNREFERENCED_PARAMETER(pqcws);
 
@@ -924,7 +931,12 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	_config->provider.field_strings = _rgFieldStrings;
 	_util.ReadFieldValues();
 
+	DebugPrint("After ReadFieldValues:");
+	DebugPrint(L"Username: " + _config->credential.username);
+	DebugPrint(L"OTP: " + _config->credential.otp);
+
 	const bool isRemote = Shared::IsCurrentSessionRemote();
+	DebugPrint(L"IsRemoteSession: " + std::to_wstring(isRemote));
 
 	// Si c'est 2e et que c'est du login et que c'est en remote desktop
 	if (isRemote) {
@@ -1121,17 +1133,30 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	}
 
 	// The user is without2fa no need to go further
+	DebugPrint("=== Checking user token type ===");
+	DebugPrint(L"Calling userTokenType for user: " + _config->credential.username);
 	HRESULT tokenType = _privacyIDEA.userTokenType(_config->credential.username, _config->credential.domain, (std::wstring)userSID);
+	DebugPrint(L"Token type result: " + std::to_wstring(tokenType));
+
+	// Log token type in human readable format
+	if (tokenType == MULTIOTP_IS_WITHOUT2FA) DebugPrint("Token type: WITHOUT_2FA");
+	else if (tokenType == MULTIOTP_IS_WITH_TOKEN) DebugPrint("Token type: WITH_TOKEN (TOTP)");
+	else if (tokenType == MULTIOTP_IS_PUSH_TOKEN) DebugPrint("Token type: PUSH_TOKEN");
+	else if (tokenType == MULTIOTP_IS_LOCKED) DebugPrint("Token type: LOCKED");
+	else if (tokenType == MULTIOTP_IS_DELAYED) DebugPrint("Token type: DELAYED");
+	else DebugPrint("Token type: UNKNOWN");
 
 	if (_config->multiOTPWithout2FA && tokenType == MULTIOTP_IS_WITHOUT2FA)
 	{
+		DebugPrint("User is without 2FA - skipping MFA, allowing login");
 		_piStatus = PI_AUTH_SUCCESS;
-		storeLastConnectedUserIfNeeded(); 
+		storeLastConnectedUserIfNeeded();
 		return S_OK;
 	}
 
 	// Is the user locked or delayed ?
 	if ((tokenType == MULTIOTP_IS_LOCKED || tokenType == MULTIOTP_IS_DELAYED) && _config->multiOTPDisplayLockedUser) {
+		DebugPrint("User is locked or delayed");
 		if (tokenType == MULTIOTP_IS_LOCKED) {
 			_piStatus = MULTIOTP_USERLOCKED;
 		}
@@ -1147,12 +1172,16 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	// If user has a token (push or TOTP), go to second step to show OTP field and push option
 	// Don't automatically send push - let user choose in the second step UI
 	if ((tokenType == MULTIOTP_IS_PUSH_TOKEN || tokenType == MULTIOTP_IS_WITH_TOKEN) && !_config->isSecondStep) {
+		DebugPrint("User has token and not in second step - forcing twoStepHideOTP=true");
 		// Force two-step mode to show OTP field and push link
 		_config->twoStepHideOTP = true;
 	}
 
+	DebugPrint(L"Decision point - twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP) + L", isSecondStep: " + std::to_wstring(_config->isSecondStep));
+
 	if (_config->twoStepHideOTP && !_config->isSecondStep)
 	{
+		DebugPrint("=== FIRST STEP: Will transition to second step for OTP ===");
 		if (!_config->twoStepSendEmptyPassword && !_config->twoStepSendPassword)
 		{
 			// Delay for a short moment, otherwise logonui freezes (???)
@@ -1201,18 +1230,23 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	//////////////////// SECOND STEP ////////////////////////
 	else if (_config->twoStepHideOTP && _config->isSecondStep)
 	{
+		DebugPrint("=== SECOND STEP: Validating OTP ===");
+		DebugPrint(L"OTP to validate: " + _config->credential.otp);
 		// Send with optional transaction_id from first step
 		_piStatus = _privacyIDEA.validateCheck(
 			_config->credential.username,
 			_config->credential.domain,
 			SecureWString(_config->credential.otp.c_str()),
 			"", error_code, (std::wstring)userSID);
+		DebugPrint(L"validateCheck result: " + std::to_wstring(_piStatus));
 		PWSTR tempStr = L"";
 		if (_piStatus == PI_AUTH_SUCCESS)
 		{
+			DebugPrint("OTP validation SUCCESS");
 			storeLastConnectedUserIfNeeded();
 		}
 		else {
+			DebugPrint("OTP validation FAILED");
 			_config->defaultOTPFailureText = getErrorMessage(error_code);
 		}
 		if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"currentOfflineUser", &tempStr, L"") > 1) {
@@ -1226,24 +1260,29 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	//////// NORMAL SETUP WITH 3 FIELDS -> SEND OTP ////////
 	else
 	{
+		DebugPrint("=== SINGLE STEP MODE: Validating OTP directly ===");
+		DebugPrint(L"OTP to validate: " + _config->credential.otp);
 		// A voir si on vient ici
 		_piStatus = _privacyIDEA.validateCheck(
 			_config->credential.username,
 			_config->credential.domain,
 			SecureWString(_config->credential.otp.c_str()),
 			"", error_code, (std::wstring)userSID);
+		DebugPrint(L"validateCheck result: " + std::to_wstring(_piStatus));
 		PWSTR tempStr = L"";
 		if (_piStatus == PI_AUTH_SUCCESS) {
+			DebugPrint("OTP validation SUCCESS");
 			if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"currentOfflineUser", &tempStr, L"") > 1) {
 				_config->credential.username = tempStr;
 			}
 			storeLastConnectedUserIfNeeded();
 		}
 		else {
+			DebugPrint("OTP validation FAILED");
 			_config->defaultOTPFailureText = getErrorMessage(error_code);
 		}
 	}
-	DebugPrint("Connect - END");
+	DebugPrint(L"=== Connect END - piStatus: " + std::to_wstring(_piStatus) + L" ===");
 	return S_OK; // always S_OK
 }
 

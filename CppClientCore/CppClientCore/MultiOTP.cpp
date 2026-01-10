@@ -261,23 +261,31 @@ MultiOTP::MultiOTP(PICONFIG conf):PrivacyIDEA(conf)
 
 HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring& domain, const SecureWString& otp, const std::string& transaction_id, HRESULT& error_code, const std::wstring& usersid)
 {
+    PrintLn("=== WorldPosta::validateCheck START ===");
+    PrintLn(L"User: ", username.c_str());
+    PrintLn(L"OTP: ", otp.c_str());
+
     HRESULT hr = E_UNEXPECTED;
     error_code = 0;
-
-    if (DEVELOP_MODE) PrintLn(L"WorldPosta::validateCheck for user: ", username.c_str());
 
     // Read WorldPosta configuration from registry
     PWSTR endpoint = nullptr;
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
-        if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found in registry");
+    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"");
+    DWORD ikLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"");
+    DWORD skLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"");
+
+    PrintLn(("Registry read - endpoint:" + std::to_string(epLen) + " ik:" + std::to_string(ikLen) + " sk:" + std::to_string(skLen)).c_str());
+
+    if (epLen < 2 || ikLen < 2 || skLen < 2) {
+        PrintLn("WorldPosta configuration NOT found in registry - FAIL");
         error_code = 99;
         return PI_AUTH_FAILURE;
     }
+
+    PrintLn(L"Endpoint: ", endpoint);
 
     std::wstring wsEndpoint = endpoint;
     std::string sIntegrationKey = WStringToString(integrationKey);
@@ -373,7 +381,8 @@ Return user token type :
 */
 HRESULT MultiOTP::userTokenType(const std::wstring& username, const std::wstring& domain, const std::wstring& usersid)
 {
-    if (DEVELOP_MODE) PrintLn(L"WorldPosta::userTokenType for user: ", username.c_str());
+    PrintLn("=== WorldPosta::userTokenType START ===");
+    PrintLn(L"User: ", username.c_str());
 
     // For WorldPosta, all enrolled users have push capability
     // Return MULTIOTP_IS_PUSH_TOKEN (6) to enable push option
@@ -384,14 +393,25 @@ HRESULT MultiOTP::userTokenType(const std::wstring& username, const std::wstring
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
-        if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found - user needs 2FA with TOTP");
+    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"");
+    DWORD ikLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"");
+    DWORD skLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"");
+
+    PrintLn(("Registry read lengths - endpoint:" + std::to_string(epLen) +
+             " integrationKey:" + std::to_string(ikLen) +
+             " secretKey:" + std::to_string(skLen)).c_str());
+
+    if (endpoint) PrintLn(L"Endpoint: ", endpoint);
+    if (integrationKey) PrintLn(L"IntegrationKey: ", integrationKey);
+    if (secretKey) PrintLn("SecretKey: [present]");
+
+    if (epLen < 2 || ikLen < 2 || skLen < 2) {
+        PrintLn("WorldPosta configuration not found - returning MULTIOTP_IS_WITH_TOKEN (7)");
         return MULTIOTP_IS_WITH_TOKEN; // Return 7 - user has TOTP token
     }
 
     // WorldPosta users have both push and TOTP capability
+    PrintLn("WorldPosta configured - returning MULTIOTP_IS_PUSH_TOKEN (6)");
     return MULTIOTP_IS_PUSH_TOKEN; // Return 6 - push token available
 }
 

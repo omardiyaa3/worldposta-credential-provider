@@ -361,36 +361,56 @@ HRESULT CProvider::GetCredentialCount(
 )
 {
 	DebugPrint(__FUNCTION__);
+	DebugPrint("=== GetCredentialCount START ===");
 
 	*pdwCount = 1;
 	*pdwDefault = 0; // this means we want to be the default
 	*pbAutoLogonWithDefault = FALSE;
+
+	DebugPrint(L"twoStepHideOTP from config: " + std::to_wstring(_config->twoStepHideOTP));
+	DebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
+
 	if (_config->noDefault)
 	{
 		*pdwDefault = CREDENTIAL_PROVIDER_NO_DEFAULT;
 	}
 
+	bool hasSerializedUser = _SerializationAvailable(SAF_USERNAME);
+	bool hasSerializedPass = _SerializationAvailable(SAF_PASSWORD);
+	DebugPrint(L"Has serialized username: " + std::to_wstring(hasSerializedUser));
+	DebugPrint(L"Has serialized password: " + std::to_wstring(hasSerializedPass));
+
 	// if serialized creds are available, try using them to logon
-	if (_SerializationAvailable(SAF_USERNAME) && _SerializationAvailable(SAF_PASSWORD) && _config->provider.cpu != CPUS_CREDUI)
+	if (hasSerializedUser && hasSerializedPass && _config->provider.cpu != CPUS_CREDUI)
 	{
 		*pdwDefault = 0;
 		_config->isRemoteSession = Shared::IsCurrentSessionRemote();
+		DebugPrint(L"Is remote session: " + std::to_wstring(_config->isRemoteSession));
+
 		if (_config->isRemoteSession)
 		{
-			// For remote sessions (RDP with NLA), always show the UI to allow 2FA
-			// NLA already authenticated username/password, so we go directly to second step
-			DebugPrint("Remote session with serialized credentials - showing 2FA UI");
-			_config->twoStepHideOTP = true;  // Enable two-step mode
-			_config->isSecondStep = true;     // Skip to second step (OTP/push)
-			*pbAutoLogonWithDefault = FALSE;  // Don't auto-logon, show the UI
+			// For remote sessions (RDP with NLA), show UI to allow 2FA
+			// NLA already authenticated username/password via CredSSP
+			// We enable two-step mode and auto-submit first step to go to OTP screen
+			DebugPrint("NLA DETECTED: Remote session with serialized credentials - enabling 2FA flow");
+			_config->twoStepHideOTP = true;   // Enable two-step mode
+			_config->doAutoLogon = true;      // Auto-submit first step to get to OTP screen
+			*pbAutoLogonWithDefault = FALSE;  // Show UI first (SetSelected will trigger auto-submit)
+			DebugPrint("NLA: Set twoStepHideOTP=true, doAutoLogon=true, pbAutoLogonWithDefault=FALSE");
 		}
 		else
 		{
+			DebugPrint("Local session with serialized credentials - auto logon");
 			*pdwDefault = 0;
 			*pbAutoLogonWithDefault = TRUE;
 		}
 	}
+	else
+	{
+		DebugPrint("No serialized credentials - normal flow");
+	}
 
+	DebugPrint("=== GetCredentialCount END ===");
 	return S_OK;
 }
 
