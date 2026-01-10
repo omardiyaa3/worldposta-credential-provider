@@ -39,15 +39,33 @@ jobs:
 
     - name: List build outputs
       run: |
+        Write-Host "=== All DLLs ==="
         Get-ChildItem -Recurse -Filter "*.dll" | Select-Object FullName
-        Get-ChildItem -Recurse -Filter "*.exe" | Select-Object FullName
+        Write-Host "=== All LIBs ==="
+        Get-ChildItem -Recurse -Filter "*.lib" | Select-Object FullName
+
+    - name: Prepare artifacts
+      run: |
+        New-Item -ItemType Directory -Force -Path "artifacts"
+        # Find and copy credential provider DLL
+        $dll = Get-ChildItem -Recurse -Filter "multiOTPCredentialProvider.dll" | Select-Object -First 1
+        if ($dll) {
+          Copy-Item $dll.FullName -Destination "artifacts/"
+          Write-Host "Found DLL: $($dll.FullName)"
+        }
+        # Also copy filter DLL if exists
+        $filterDll = Get-ChildItem -Recurse -Filter "multiOTPCredentialProviderFilter.dll" | Select-Object -First 1
+        if ($filterDll) {
+          Copy-Item $filterDll.FullName -Destination "artifacts/"
+          Write-Host "Found Filter DLL: $($filterDll.FullName)"
+        }
+        Get-ChildItem artifacts/
 
     - name: Upload DLL Artifact
       uses: actions/upload-artifact@v4
       with:
         name: WorldPostaCredentialProvider-DLL
-        path: |
-          x64/Release/*.dll
+        path: artifacts/
 
     - name: Upload stable files
       uses: actions/upload-artifact@v4
@@ -67,7 +85,7 @@ jobs:
       uses: actions/download-artifact@v4
       with:
         name: WorldPostaCredentialProvider-DLL
-        path: x64/Release
+        path: artifacts
 
     - name: Download stable files
       uses: actions/download-artifact@v4
@@ -78,8 +96,11 @@ jobs:
     - name: Install WiX Toolset
       run: choco install wixtoolset --version=3.11.2 -y
 
-    - name: Create installer directory
-      run: mkdir -p WixInstall/obj
+    - name: Prepare installer files
+      run: |
+        New-Item -ItemType Directory -Force -Path "x64/Release"
+        Copy-Item artifacts/*.dll -Destination "x64/Release/"
+        New-Item -ItemType Directory -Force -Path "WixInstall/obj"
 
     - name: List files for debugging
       run: |
