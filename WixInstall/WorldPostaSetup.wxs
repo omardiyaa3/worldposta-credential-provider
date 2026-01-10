@@ -21,8 +21,8 @@
 
     <!-- Properties for API configuration -->
     <Property Id="WORLDPOSTA_ENDPOINT" Value="https://api.worldposta.com"/>
-    <Property Id="WORLDPOSTA_INTEGRATION_KEY" Value=""/>
-    <Property Id="WORLDPOSTA_SECRET_KEY" Value="" Hidden="yes"/>
+    <Property Id="WORLDPOSTA_INTEGRATION_KEY" Secure="yes"/>
+    <Property Id="WORLDPOSTA_SECRET_KEY" Hidden="yes" Secure="yes"/>
     <Property Id="ENABLE_RDP" Value="1"/>
     <Property Id="ENABLE_LOCAL" Value="0"/>
 
