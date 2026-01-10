@@ -1135,18 +1135,11 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 
 	HRESULT error_code;
 
-	if (tokenType == MULTIOTP_IS_PUSH_TOKEN && !_config->isSecondStep) {
-		// Send the push notification request and wait for the response
-		_piStatus = _privacyIDEA.validateCheck(
-			_config->credential.username,
-			_config->credential.domain,
-			SecureWString(L"push"),
-			"", error_code, (std::wstring)userSID);
-		if (_piStatus == PI_AUTH_SUCCESS)
-		{
-			storeLastConnectedUserIfNeeded();
-			return S_OK;
-		}
+	// If user has a token (push or TOTP), go to second step to show OTP field and push option
+	// Don't automatically send push - let user choose in the second step UI
+	if ((tokenType == MULTIOTP_IS_PUSH_TOKEN || tokenType == MULTIOTP_IS_WITH_TOKEN) && !_config->isSecondStep) {
+		// Force two-step mode to show OTP field and push link
+		_config->twoStepHideOTP = true;
 	}
 
 	if (_config->twoStepHideOTP && !_config->isSecondStep)
