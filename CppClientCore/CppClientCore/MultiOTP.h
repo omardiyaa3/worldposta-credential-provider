@@ -1,20 +1,13 @@
 /**
- * multiOTP Credential Provider, extends privacyIdea
+ * WorldPosta Credential Provider - Authentication Module Header
  *
- * @author    Yann Jeanrenaud, SysCo systemes de communication sa, <info@multiotp.net>
- * @version   5.10.1.2
- * @date      2026-01-05
- * @since     2021
- * @copyright (c) 2016-2026 SysCo systemes de communication sa
- * @copyright (c) 2015-2016 ArcadeJust ("RDP only" enhancement)
- * @copyright (c) 2013-2015 Last Squirrel IT
+ * Modified for WorldPosta Authenticator integration
+ * Original multiOTP code by SysCo systemes de communication sa
+ *
+ * @author    WorldPosta
+ * @version   1.0.0
+ * @date      2026-01-10
  * @copyright Apache License, Version 2.0
- *
- *
- * Change Log
- *
- *	 2025-10-22 5.9.9.4 SysCo/yj  ENH: Tranforming isWithout2FA in userTokenType in order to manage push token.
- *   2021-03-24 1.0.0.0 SysCo/yj New implementation from scratch
  *
  *********************************************************************/
 #pragma once
@@ -32,16 +25,22 @@
 #include "PrivacyIDEA.h"
 
 class MultiOTP : public PrivacyIDEA {
-	
+
 public:
 	MultiOTP(PICONFIG conf);
 
-	// Tries to verify with offline otp first. If there is none,
-	// sends the parameters to privacyIDEA and checks the response for
-	// 1. Offline otp data, 2. Triggered challenges, 3. Authentication success
-	// <returns> PI_AUTH_SUCCESS, PI_TRIGGERED_CHALLENGE, PI_AUTH_FAILURE, PI_AUTH_ERROR, PI_ENDPOINT_SETUP_ERROR, PI_WRONG_OFFLINE_SERVER_UNAVAILABLE </returns>
+	// Verifies OTP with WorldPosta API
+	// <returns> PI_AUTH_SUCCESS, PI_AUTH_FAILURE, PI_AUTH_ERROR </returns>
 	HRESULT validateCheck(const std::wstring& username, const std::wstring& domain, const SecureWString& otp, const std::string& transaction_id, HRESULT& error_code, const std::wstring& usersid);
-	HRESULT MultiOTP::userTokenType(const std::wstring& username, const std::wstring& domain, const std::wstring& usersid);
+
+	// Returns user token type (push, totp, without2fa, etc.)
+	HRESULT userTokenType(const std::wstring& username, const std::wstring& domain, const std::wstring& usersid);
+
+	// Send push notification via WorldPosta API
+	HRESULT sendPushNotification(const std::wstring& username, const std::wstring& domain);
+
+	// Check push notification status
+	HRESULT checkPushStatus();
 
 private:
 
