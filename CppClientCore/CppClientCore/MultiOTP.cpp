@@ -290,6 +290,47 @@ HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring
     // Convert OTP to string
     std::string sOtp = WStringToString(std::wstring(otp.c_str()));
 
+    // Check if this is a push authentication request
+    if (sOtp == "push" || sOtp == "sms") {
+        if (DEVELOP_MODE) PrintLn(("Push authentication requested for user " + sUsername).c_str());
+
+        // Send push notification
+        HRESULT pushResult = sendPushNotification(username, domain);
+        if (FAILED(pushResult)) {
+            if (DEVELOP_MODE) PrintLn("Failed to send push notification");
+            error_code = 70;
+            return PI_AUTH_FAILURE;
+        }
+
+        // Poll for push status with timeout (60 seconds, checking every 2 seconds)
+        const int maxAttempts = 30;
+        const int pollIntervalMs = 2000;
+
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            Sleep(pollIntervalMs);
+
+            HRESULT status = checkPushStatus();
+
+            if (status == PI_AUTH_SUCCESS) {
+                if (DEVELOP_MODE) PrintLn("Push authentication SUCCESS");
+                return PI_AUTH_SUCCESS;
+            }
+            else if (status == PI_AUTH_FAILURE) {
+                if (DEVELOP_MODE) PrintLn("Push authentication DENIED or EXPIRED");
+                error_code = 99;
+                return PI_AUTH_FAILURE;
+            }
+            // E_PENDING means keep polling
+            if (DEVELOP_MODE) PrintLn(("Push polling attempt " + std::to_string(attempt + 1) + "/" + std::to_string(maxAttempts)).c_str());
+        }
+
+        // Timeout - no response within time limit
+        if (DEVELOP_MODE) PrintLn("Push authentication TIMEOUT");
+        error_code = 70;
+        return PI_AUTH_FAILURE;
+    }
+
+    // Standard TOTP verification
     // Build JSON request body
     std::string requestBody = "{\"externalUserId\":\"" + sUsername + "\",\"code\":\"" + sOtp + "\"}";
 
