@@ -30,6 +30,7 @@
 #define MULTIOTP_PREFIX_PASSWORD    L"multiOTPPrefixPass"  // No more used
 #define MULTIOTP_DISPLAY_SMS_LINK   L"multiOTPDisplaySmsLink"
 #define MULTIOTP_DISPLAY_EMAIL_LINK L"multiOTPDisplayEmailLink"
+#define MULTIOTP_DISPLAY_PUSH_LINK  L"multiOTPDisplayPushLink"
 #define MULTIOTP_UPN_FORMAT         L"multiOTPUPNFormat"
 #define MULTIOTP_LOGIN_TITLE        L"multiOTPLoginTitle"
 #define MULTIOTP_CACHE_ENABLED      L"multiOTPCacheEnabled"
@@ -83,7 +84,8 @@ enum CONF_VALUE
 	LAST_USER_TIMESTAMP = 19,
 	CONF_NUMLOCK_ON = 20,
 	CONF_NUM_VALUES = 21,
-	CONF_ERROR_MESSAGE = 22
+	CONF_ERROR_MESSAGE = 22,
+	CONF_DISPLAY_PUSH_LINK = 23
 };
 
 static const REGISTRY_KEY s_CONF_VALUES[] =
@@ -111,6 +113,7 @@ static const REGISTRY_KEY s_CONF_VALUES[] =
 	{ HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, MULTIOTP_NUMLOCK_ON}, // 20
 	{ HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, MULTIOTP_NUMLOCK_ON}, // 21 no more used
 	{ HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, MULTIOTP_OTP_FAIL_TEXT}, // 22
+	{ HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, MULTIOTP_DISPLAY_PUSH_LINK}, // 23
 };
 VOID writeKeyValueInMultiOTPRegistry(_In_ HKEY rootKeyValue, _In_ PWSTR keyName, _In_ PWSTR valueName, _In_ PWSTR writeValue);
 VOID writeRegistryValueString(_In_ CONF_VALUE conf_value, _In_ PWSTR writeValue);

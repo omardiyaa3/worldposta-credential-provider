@@ -253,6 +253,12 @@ HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 			else {
 				_pCredProvCredentialEvents->SetFieldState(this, FID_REQUIRE_SMS, CPFS_HIDDEN);
 			}
+			if (readRegistryValueInteger(CONF_DISPLAY_PUSH_LINK, 1)) {
+				_pCredProvCredentialEvents->SetFieldState(this, FID_REQUIRE_PUSH, CPFS_DISPLAY_IN_SELECTED_TILE);
+			}
+			else {
+				_pCredProvCredentialEvents->SetFieldState(this, FID_REQUIRE_PUSH, CPFS_HIDDEN);
+			}
 		}
 	}
 	
@@ -270,6 +276,12 @@ HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 			}
 			else {
 				_pCredProvCredentialEvents->SetFieldState(this, FID_REQUIRE_SMS, CPFS_HIDDEN);
+			}
+			if (readRegistryValueInteger(CONF_DISPLAY_PUSH_LINK, 1)) {
+				_pCredProvCredentialEvents->SetFieldState(this, FID_REQUIRE_PUSH, CPFS_DISPLAY_IN_SELECTED_TILE);
+			}
+			else {
+				_pCredProvCredentialEvents->SetFieldState(this, FID_REQUIRE_PUSH, CPFS_HIDDEN);
 			}
 		}
 	}
@@ -626,6 +638,45 @@ HRESULT CCredential::CommandLinkClicked(__in DWORD dwFieldID)
 				   _pCredProvCredentialEvents->SetFieldInteractiveState(this, FID_LDAP_PASS, CREDENTIAL_PROVIDER_FIELD_INTERACTIVE_STATE::CPFIS_FOCUSED);
 			   }
 		   }
+		   break;
+	   case FID_REQUIRE_PUSH:
+		   if (_pCredProvCredentialEvents) {
+			   _config->provider.pCredProvCredential = this;
+			   _config->provider.pCredProvCredentialEvents = _pCredProvCredentialEvents;
+			   _config->provider.field_strings = _rgFieldStrings;
+			   _util.ReadFieldValues();
+
+			   // Hide the push button and show waiting message
+			   hideCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_REQUIRE_PUSH);
+			   displayCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_PUSH_WAITING);
+
+			   std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
+			   LPTSTR userSID = getSidFromUsername(cleanUsername);
+
+			   // Send push notification via WorldPosta API
+			   HRESULT error_code;
+			   _piStatus = _privacyIDEA.validateCheck(
+				   _config->credential.username,
+				   _config->credential.domain,
+				   SecureWString(L"push"),
+				   "", error_code, (std::wstring)userSID);
+
+			   if (_piStatus == PI_AUTH_SUCCESS) {
+				   // Push was approved, trigger auto logon
+				   _config->pushAuthenticationSuccessful = true;
+				   _config->doAutoLogon = true;
+				   _config->bypassPrivacyIDEA = true;
+				   _config->provider.pCredentialProviderEvents->CredentialsChanged(_config->provider.upAdviseContext);
+			   }
+			   else {
+				   // Push failed or timed out, hide waiting and show error
+				   hideCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_PUSH_WAITING);
+				   displayCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_REQUIRE_PUSH);
+			   }
+		   }
+		   break;
+	   case FID_PUSH_WAITING:
+		   // Do nothing when waiting message is clicked
 		   break;
 	   default:
 		   return E_INVALIDARG;

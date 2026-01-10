@@ -45,7 +45,7 @@ const std::wstring Utilities::texts[10][2] = {
 		{L"Password", L"Kennwort"},
 		{L"Old Password", L"Altes Kennwort"},
 		{L"New Password", L"Neues Kennwort"},
-		{L"Confirm password", L"Kennwort bestätigen"},
+		{L"Confirm password", L"Kennwort bestï¿½tigen"},
 		{L"Sign in to: ", L"Anmelden an: "},
 		{L"One-Time Password", L"Einmalpassword"},
 		{L"Wrong One-Time Password!", L"Falsches Einmalpasswort!"},
@@ -470,6 +470,17 @@ HRESULT Utilities::SetScenario(
 	else {
 		pCPCE->SetFieldState(pCredential, FID_REQUIRE_EMAIL, CPFS_HIDDEN);
 	}
+
+	// Display or not the "Send Push Notification" link
+	if (scenario == SCENARIO::SECOND_STEP && readRegistryValueInteger(CONF_DISPLAY_PUSH_LINK, 1)) {
+		pCPCE->SetFieldState(pCredential, FID_REQUIRE_PUSH, CPFS_DISPLAY_IN_SELECTED_TILE);
+	}
+	else {
+		pCPCE->SetFieldState(pCredential, FID_REQUIRE_PUSH, CPFS_HIDDEN);
+	}
+
+	// Hide the push waiting message by default
+	pCPCE->SetFieldState(pCredential, FID_PUSH_WAITING, CPFS_HIDDEN);
 
 	// Display or not the "OTP sent by SMS"
 	pCPCE->SetFieldState(pCredential, FID_CODE_SENT_SMS, CPFS_HIDDEN);
