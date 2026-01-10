@@ -35,7 +35,7 @@ jobs:
       shell: cmd
       run: |
         call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-        msbuild multiOTPCredentialProvider.sln /p:Configuration=Release /p:Platform=x64 /t:Build /m /p:VCToolsVersion=14.43
+        msbuild multiOTPCredentialProvider.sln /p:Configuration=Release /p:Platform=x64 /t:Build /m /p:PlatformToolset=v143
 
     - name: List build outputs
       run: |
