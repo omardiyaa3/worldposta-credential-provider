@@ -375,9 +375,14 @@ HRESULT CProvider::GetCredentialCount(
 	{
 		*pdwDefault = 0;
 		_config->isRemoteSession = Shared::IsCurrentSessionRemote();
-		if (_config->isRemoteSession && !_config->twoStepHideOTP)
+		if (_config->isRemoteSession)
 		{
-			*pbAutoLogonWithDefault = FALSE;
+			// For remote sessions (RDP with NLA), always show the UI to allow 2FA
+			// NLA already authenticated username/password, so we go directly to second step
+			DebugPrint("Remote session with serialized credentials - showing 2FA UI");
+			_config->twoStepHideOTP = true;  // Enable two-step mode
+			_config->isSecondStep = true;     // Skip to second step (OTP/push)
+			*pbAutoLogonWithDefault = FALSE;  // Don't auto-logon, show the UI
 		}
 		else
 		{

@@ -235,7 +235,16 @@ HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 	{
 		*pbAutoLogon = TRUE;
 	}
-	
+
+	// If we're already in second step mode (e.g., from NLA with serialized credentials),
+	// set up the second step UI to show OTP field and push button
+	if (_config->isSecondStep && _config->twoStepHideOTP && !_config->credential.passwordMustChange)
+	{
+		DebugPrint("SetSelected: Starting in second step mode (NLA), showing OTP/push UI");
+		_util.SetScenario(this, _pCredProvCredentialEvents, SCENARIO::SECOND_STEP);
+		return hr;
+	}
+
 	// Manage link display if it's in one step mode
 	if (_config->provider.cpu == CPUS_LOGON && !_config->credential.passwordMustChange)
 	{
@@ -907,7 +916,7 @@ void CCredential::PushAuthenticationCallback(bool success)
 HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 {
 	DebugPrint(__FUNCTION__);
-	
+
 	UNREFERENCED_PARAMETER(pqcws);
 
 	_config->provider.pCredProvCredential = this;
