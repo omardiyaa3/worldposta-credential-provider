@@ -1,0 +1,8 @@
+// WorldPosta logo resources
+#include "logos.h"
+
+// Main logo for dialog left panel (256x256)
+IDB_WP_LOGO BITMAP "loginLogo.bmp"
+
+// Small icon for auth buttons (64x64)
+IDB_WP_SMALL_ICON BITMAP "smallIcon.bmp"

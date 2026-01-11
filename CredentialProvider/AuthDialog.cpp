@@ -1,4 +1,5 @@
 #include "AuthDialog.h"
+#include "logos.h"
 #include <CommCtrl.h>
 #include <windowsx.h>
 #include <gdiplus.h>
@@ -6,6 +7,9 @@
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
+
+// Forward declaration for DLL module handle
+extern HINSTANCE g_hinst;
 
 // WorldPosta brand colors
 #define WP_GREEN RGB(103, 154, 65)      // #679a41
@@ -54,37 +58,30 @@ static void InitGDIPlus() {
     }
 }
 
-// Load logo images from installed path
+// Helper to load bitmap from resource
+static Gdiplus::Bitmap* LoadBitmapFromResource(int resourceId) {
+    HBITMAP hBitmap = (HBITMAP)LoadImageW(g_hinst, MAKEINTRESOURCEW(resourceId),
+                                          IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
+    if (hBitmap) {
+        Gdiplus::Bitmap* bitmap = Gdiplus::Bitmap::FromHBITMAP(hBitmap, NULL);
+        DeleteObject(hBitmap);
+        return bitmap;
+    }
+    return nullptr;
+}
+
+// Load logo images from embedded resources
 static void LoadLogoImage() {
     InitGDIPlus();
 
-    wchar_t basePath[MAX_PATH];
+    // Load main logo if not already loaded
+    if (g_logoImage == nullptr) {
+        g_logoImage = LoadBitmapFromResource(IDB_WP_LOGO);
+    }
 
-    // Get Program Files path
-    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_PROGRAM_FILES, NULL, 0, basePath))) {
-        // Load main logo if not already loaded
-        if (g_logoImage == nullptr) {
-            wchar_t logoPath[MAX_PATH];
-            wcscpy_s(logoPath, basePath);
-            wcscat_s(logoPath, L"\\multiOTP\\loginLogo.bmp");
-            g_logoImage = Gdiplus::Image::FromFile(logoPath);
-            if (g_logoImage && g_logoImage->GetLastStatus() != Gdiplus::Ok) {
-                delete g_logoImage;
-                g_logoImage = nullptr;
-            }
-        }
-
-        // Load small icon if not already loaded
-        if (g_smallIconImage == nullptr) {
-            wchar_t iconPath[MAX_PATH];
-            wcscpy_s(iconPath, basePath);
-            wcscat_s(iconPath, L"\\multiOTP\\smallIcon.bmp");
-            g_smallIconImage = Gdiplus::Image::FromFile(iconPath);
-            if (g_smallIconImage && g_smallIconImage->GetLastStatus() != Gdiplus::Ok) {
-                delete g_smallIconImage;
-                g_smallIconImage = nullptr;
-            }
-        }
+    // Load small icon if not already loaded
+    if (g_smallIconImage == nullptr) {
+        g_smallIconImage = LoadBitmapFromResource(IDB_WP_SMALL_ICON);
     }
 }
 
@@ -230,9 +227,12 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             otpButtonRect = {rightPanelX + 40, startY + buttonHeight + spacing,
                             rightPanelX + 40 + buttonWidth, startY + buttonHeight * 2 + spacing};
 
-            // Cancel button in footer
-            cancelButtonRect = {DLG_WIDTH - 140, DLG_HEIGHT - FOOTER_HEIGHT + 18,
-                               DLG_WIDTH - 20, DLG_HEIGHT - 18};
+            // Cancel button in footer - smaller to fit properly
+            int cancelBtnWidth = 90;
+            int cancelBtnHeight = 32;
+            int cancelBtnY = DLG_HEIGHT - FOOTER_HEIGHT + (FOOTER_HEIGHT - cancelBtnHeight) / 2;
+            cancelButtonRect = {DLG_WIDTH - cancelBtnWidth - 20, cancelBtnY,
+                               DLG_WIDTH - 20, cancelBtnY + cancelBtnHeight};
         }
         return 0;
 
