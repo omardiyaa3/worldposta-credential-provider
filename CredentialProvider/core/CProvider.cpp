@@ -367,6 +367,7 @@ HRESULT CProvider::GetCredentialCount(
 	__out BOOL* pbAutoLogonWithDefault
 )
 {
+	ReleaseDebugPrint("=== GetCredentialCount CALLED ===");
 	DebugPrint(__FUNCTION__);
 	DebugPrint("=== GetCredentialCount START ===");
 
@@ -374,6 +375,8 @@ HRESULT CProvider::GetCredentialCount(
 	*pdwDefault = 0; // this means we want to be the default
 	*pbAutoLogonWithDefault = FALSE;
 
+	ReleaseDebugPrint(L"twoStepHideOTP from config: " + std::to_wstring(_config->twoStepHideOTP));
+	ReleaseDebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
 	DebugPrint(L"twoStepHideOTP from config: " + std::to_wstring(_config->twoStepHideOTP));
 	DebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
 
@@ -384,14 +387,18 @@ HRESULT CProvider::GetCredentialCount(
 
 	bool hasSerializedUser = _SerializationAvailable(SAF_USERNAME);
 	bool hasSerializedPass = _SerializationAvailable(SAF_PASSWORD);
+	ReleaseDebugPrint(L"Has serialized username: " + std::to_wstring(hasSerializedUser));
+	ReleaseDebugPrint(L"Has serialized password: " + std::to_wstring(hasSerializedPass));
 	DebugPrint(L"Has serialized username: " + std::to_wstring(hasSerializedUser));
 	DebugPrint(L"Has serialized password: " + std::to_wstring(hasSerializedPass));
 
 	// if serialized creds are available, try using them to logon
 	if (hasSerializedUser && hasSerializedPass && _config->provider.cpu != CPUS_CREDUI)
 	{
+		ReleaseDebugPrint("Serialized credentials available");
 		*pdwDefault = 0;
 		_config->isRemoteSession = Shared::IsCurrentSessionRemote();
+		ReleaseDebugPrint(L"Is remote session: " + std::to_wstring(_config->isRemoteSession));
 		DebugPrint(L"Is remote session: " + std::to_wstring(_config->isRemoteSession));
 
 		if (_config->isRemoteSession)
@@ -399,14 +406,17 @@ HRESULT CProvider::GetCredentialCount(
 			// For remote sessions (RDP with NLA), show UI to allow 2FA
 			// NLA already authenticated username/password via CredSSP
 			// We enable two-step mode and auto-submit first step to go to OTP screen
+			ReleaseDebugPrint("NLA DETECTED: Remote session with serialized credentials - enabling 2FA flow");
 			DebugPrint("NLA DETECTED: Remote session with serialized credentials - enabling 2FA flow");
 			_config->twoStepHideOTP = true;   // Enable two-step mode
 			_config->doAutoLogon = true;      // Auto-submit first step to get to OTP screen
 			*pbAutoLogonWithDefault = FALSE;  // Show UI first (SetSelected will trigger auto-submit)
+			ReleaseDebugPrint("NLA: Set twoStepHideOTP=true, doAutoLogon=true, pbAutoLogonWithDefault=FALSE");
 			DebugPrint("NLA: Set twoStepHideOTP=true, doAutoLogon=true, pbAutoLogonWithDefault=FALSE");
 		}
 		else
 		{
+			ReleaseDebugPrint("Local session with serialized credentials - auto logon");
 			DebugPrint("Local session with serialized credentials - auto logon");
 			*pdwDefault = 0;
 			*pbAutoLogonWithDefault = TRUE;
@@ -414,9 +424,11 @@ HRESULT CProvider::GetCredentialCount(
 	}
 	else
 	{
+		ReleaseDebugPrint("No serialized credentials - normal flow");
 		DebugPrint("No serialized credentials - normal flow");
 	}
 
+	ReleaseDebugPrint("=== GetCredentialCount END ===");
 	DebugPrint("=== GetCredentialCount END ===");
 	return S_OK;
 }
@@ -428,14 +440,17 @@ HRESULT CProvider::GetCredentialAt(
 	__deref_out ICredentialProviderCredential** ppcpc
 )
 {
+	ReleaseDebugPrint("=== GetCredentialAt CALLED ===");
+	ReleaseDebugPrint(L"dwIndex: " + std::to_wstring(dwIndex));
 	DebugPrint(__FUNCTION__);
 
 	HRESULT hr = E_FAIL;
 	const CREDENTIAL_PROVIDER_USAGE_SCENARIO usage_scenario = _config->provider.cpu;
-
+	ReleaseDebugPrint(L"usage_scenario: " + std::to_wstring(usage_scenario));
 
 	if (!_credential)
 	{
+		ReleaseDebugPrint("Creating new credential...");
 		DebugPrint("Checking for serialized credentials");
 
 		PWSTR serializedUser, serializedPass, serializedDomain;
@@ -527,26 +542,31 @@ HRESULT CProvider::GetCredentialAt(
 		return E_OUTOFMEMORY;
 	}
 
+	ReleaseDebugPrint("Returning interface to credential");
 	DebugPrint("Returning interface to credential");
 
 	if ((dwIndex == 0) && ppcpc)
 	{
 		if (usage_scenario == CPUS_CREDUI)
 		{
+			ReleaseDebugPrint("CredUI: returning IID_ICredentialProviderCredential");
 			DebugPrint("CredUI: returning an IID_ICredentialProviderCredential");
 			hr = _credential->QueryInterface(IID_ICredentialProviderCredential, reinterpret_cast<void**>(ppcpc));
 		}
 		else
 		{
+			ReleaseDebugPrint("Non-CredUI: returning IID_IConnectableCredentialProviderCredential");
 			DebugPrint("Non-CredUI: returning an IID_IConnectableCredentialProviderCredential");
 			hr = _credential->QueryInterface(IID_IConnectableCredentialProviderCredential, reinterpret_cast<void**>(ppcpc));
 		}
 	}
 	else
 	{
+		ReleaseDebugPrint("ERROR: Invalid dwIndex or null ppcpc");
 		hr = E_INVALIDARG;
 	}
 
+	ReleaseDebugPrint(L"GetCredentialAt returning hr: " + std::to_wstring(hr));
 	DebugPrint(hr);
 
 	return hr;

@@ -201,6 +201,14 @@ HRESULT CCredential::UnAdvise()
 // selected, you would do it here.
 HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 {
+	ReleaseDebugPrint("=== SetSelected CALLED ===");
+	ReleaseDebugPrint(L"doAutoLogon: " + std::to_wstring(_config->doAutoLogon));
+	ReleaseDebugPrint(L"twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP));
+	ReleaseDebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
+	ReleaseDebugPrint(L"isRemoteSession: " + std::to_wstring(_config->isRemoteSession));
+	ReleaseDebugPrint(L"Username: " + _config->credential.username);
+	ReleaseDebugPrint(L"Domain: " + _config->credential.domain);
+
 	DebugPrint(__FUNCTION__);
 	DebugPrint("=== SetSelected START ===");
 	DebugPrint(L"doAutoLogon: " + std::to_wstring(_config->doAutoLogon));
@@ -215,6 +223,7 @@ HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 
 	if (_config->doAutoLogon)
 	{
+		ReleaseDebugPrint("doAutoLogon is TRUE - will auto-submit (pbAutoLogon=TRUE)");
 		DebugPrint("doAutoLogon is TRUE - will auto-submit");
 		*pbAutoLogon = TRUE;
 		_config->doAutoLogon = false;
