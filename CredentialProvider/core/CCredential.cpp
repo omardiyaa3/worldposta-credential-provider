@@ -110,10 +110,8 @@ HRESULT CCredential::Initialize(
 	DebugPrint(__FUNCTION__);
 	DebugPrint(L"Username from provider: " + (wstrUsername.empty() ? L"empty" : wstrUsername));
 	DebugPrint(L"Domain from provider: " + (wstrDomainname.empty() ? L"empty" : wstrDomainname));
-	if (_config->piconfig.logPasswords)
-	{
-		DebugPrint(L"Password from provider: " + (wstrPassword.empty() ? L"empty" : wstrPassword));
-	}
+	// SECURITY FIX: Password logging removed - never log passwords even in debug mode
+	DebugPrint(L"Password from provider: [REDACTED]");
 #endif
 	HRESULT hr = S_OK;
 
@@ -133,7 +131,12 @@ HRESULT CCredential::Initialize(
 	{
 		DebugPrint("Copying password to credential");
 		_config->credential.password = wstrPassword;
-		SecureZeroMemory(password, sizeof(password));
+		// SECURITY FIX: Clear the actual buffer content, not just pointer size
+		// sizeof(password) was wrong - it returned pointer size (8 bytes), not buffer size
+		if (password != nullptr) {
+			size_t passLen = wcslen(password);
+			SecureZeroMemory(password, passLen * sizeof(wchar_t));
+		}
 	}
 
 	for (DWORD i = 0; SUCCEEDED(hr) && i < FID_NUM_FIELDS; i++)
@@ -244,10 +247,9 @@ HRESULT CCredential::SetSelected(__out BOOL* pbAutoLogon)
 	if (_config->credential.passwordMustChange)
 	{
 		_util.SetScenario(this, _pCredProvCredentialEvents, SCENARIO::CHANGE_PASSWORD);
-		if (_config->provider.cpu == CPUS_UNLOCK_WORKSTATION)
-		{
-			_config->bypassPrivacyIDEA = true;
-		}
+		// SECURITY FIX: Removed automatic bypass for password change in unlock context
+		// Password change should still require 2FA verification for security
+		// Previously this allowed bypassing 2FA entirely during password change
 	}
 
 	if (_config->credential.passwordChanged)
@@ -918,7 +920,8 @@ HRESULT CCredential::GetSerialization(
 
 					if (!otpCode.empty())
 					{
-						ReleaseDebugPrint(L"OTP entered: " + otpCode);
+						// SECURITY FIX: OTP value not logged
+					ReleaseDebugPrint(L"OTP entered: [REDACTED]");
 
 						// Get clean username
 						std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
@@ -1100,7 +1103,8 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	ReleaseDebugPrint(L"bypassPrivacyIDEA: " + std::to_wstring(_config->bypassPrivacyIDEA));
 	ReleaseDebugPrint(L"Username: " + _config->credential.username);
 	ReleaseDebugPrint(L"Domain: " + _config->credential.domain);
-	ReleaseDebugPrint(L"OTP field value: '" + _config->credential.otp + L"'");
+	// SECURITY FIX: OTP logging removed - never log sensitive authentication codes
+	ReleaseDebugPrint(L"OTP field value: [REDACTED]");
 
 	DebugPrint(__FUNCTION__);
 	DebugPrint("=== Connect START ===");
@@ -1109,7 +1113,8 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	DebugPrint(L"bypassPrivacyIDEA: " + std::to_wstring(_config->bypassPrivacyIDEA));
 	DebugPrint(L"Username: " + _config->credential.username);
 	DebugPrint(L"Domain: " + _config->credential.domain);
-	DebugPrint(L"OTP field value: " + _config->credential.otp);
+	// SECURITY FIX: OTP value logging removed
+	DebugPrint(L"OTP field value: [REDACTED]");
 
 	UNREFERENCED_PARAMETER(pqcws);
 
@@ -1125,16 +1130,13 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	const bool isRemote = Shared::IsCurrentSessionRemote();
 	DebugPrint(L"IsRemoteSession: " + std::to_wstring(isRemote));
 
-	// Si c'est 2e et que c'est du login et que c'est en remote desktop
-	if (isRemote) {
-		PWSTR tempStr = L"";
-		readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"cpus_logon", &tempStr, L"");
-		if (wcscmp(tempStr, L"2e") == 0 || wcscmp(tempStr, L"2d") == 0) {// Compar? des chaines ou il y a un pointeur
-			_piStatus = PI_AUTH_SUCCESS;
-			return S_OK;
-		}
-	}
+	// SECURITY FIX: RDP bypass removed - all sessions require 2FA
+	// Previously, remote sessions could bypass 2FA based on registry settings
+	// This was a critical security vulnerability
 
+	// SECURITY NOTE: Excluded account feature allows bypassing 2FA for specific accounts
+	// This should ONLY be used for emergency/break-glass accounts
+	// The registry key should be protected with administrator-only ACL
 	// Check if the user is the excluded account
 	if (!_config->excludedAccount.empty())
 	{
@@ -1144,7 +1146,7 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 		}
 		toCompare.append(_config->credential.username);
 
-		// If the excluded account starts with ".\" then replace ".\" by "computername\" JEYA 04.07.2022
+		// If the excluded account starts with ".\" then replace ".\" by "computername\"
 		if (_config->excludedAccount.find_first_of(L".\\") == 0) {
 			WCHAR wsz[MAX_SIZE_DOMAIN];
 			DWORD cch = ARRAYSIZE(wsz);
@@ -1162,6 +1164,9 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 		}
 
 		if (PrivacyIDEA::toUpperCase(toCompare) == PrivacyIDEA::toUpperCase(_config->excludedAccount)) {
+			// SECURITY AUDIT: Log this event for security monitoring
+			// This bypass should be audited and monitored
+			ReleaseDebugPrint(L"SECURITY AUDIT: Excluded account bypass used for: " + toCompare);
 			DebugPrint("Login data matches excluded account, skipping 2FA...");
 			// Simulate 2FA success so the logic in GetSerialization can stay the same
 			_piStatus = PI_AUTH_SUCCESS;
@@ -1253,12 +1258,20 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 
 	}
 	
-	if (_config->bypassPrivacyIDEA)
+	// SECURITY FIX: Bypass only allowed if push authentication was successful
+	// Previously, the bypass flag alone could skip 2FA - now requires push success verification
+	if (_config->bypassPrivacyIDEA && _config->pushAuthenticationSuccessful)
 	{
-		DebugPrint("Bypassing privacyIDEA...");
+		DebugPrint("Bypassing 2FA after successful push authentication...");
 		_config->bypassPrivacyIDEA = false;
-
+		// Note: pushAuthenticationSuccessful is cleared in GetSerialization after login
 		return S_OK;
+	}
+	else if (_config->bypassPrivacyIDEA)
+	{
+		// Bypass flag set without push success - clear it (potential tampering)
+		DebugPrint("WARNING: Bypass flag set without push success - clearing");
+		_config->bypassPrivacyIDEA = false;
 	}
 
 	// Get user SID
@@ -1442,7 +1455,7 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	else if (_config->twoStepHideOTP && _config->isSecondStep)
 	{
 		DebugPrint("=== SECOND STEP: Validating OTP ===");
-		DebugPrint(L"OTP to validate: " + _config->credential.otp);
+		DebugPrint(L"OTP to validate: [REDACTED]");
 		// Send with optional transaction_id from first step
 		_piStatus = _privacyIDEA.validateCheck(
 			_config->credential.username,
@@ -1472,7 +1485,7 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	else
 	{
 		DebugPrint("=== SINGLE STEP MODE: Validating OTP directly ===");
-		DebugPrint(L"OTP to validate: " + _config->credential.otp);
+		DebugPrint(L"OTP to validate: [REDACTED]");
 		// A voir si on vient ici
 		_piStatus = _privacyIDEA.validateCheck(
 			_config->credential.username,

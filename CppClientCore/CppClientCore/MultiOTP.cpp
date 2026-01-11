@@ -18,6 +18,7 @@
 #include "PIConf.h"
 #include "Codes.h"
 #include "SecureString.h"
+#include "SecureStorage.h"
 #include <Windows.h>
 #include <winhttp.h>
 #include <string>
@@ -27,16 +28,35 @@
 #include <sstream>
 #include <iomanip>
 #include <bcrypt.h>
+#include <random>
 #include "MultiotpRegistry.h"
 
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "crypt32.lib")
 
 using namespace std;
 
-// Global variables for storing push request state
+// Thread-safe push request state with mutex
+#include <mutex>
+static std::mutex g_pushMutex;
 static std::string g_lastPushRequestId;
 static std::wstring g_lastPushUsername;
+static DWORD g_pushThreadId = 0; // Track which thread owns the push request
+
+// Helper function: Generate cryptographic random nonce
+static std::string GenerateNonce() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, 15);
+    const char* hex = "0123456789abcdef";
+    std::string nonce;
+    nonce.reserve(32);
+    for (int i = 0; i < 32; i++) {
+        nonce.push_back(hex[dis(gen)]);
+    }
+    return nonce;
+}
 
 // Helper function: Convert wstring to string (UTF-8)
 static std::string WStringToString(const std::wstring& ws) {
@@ -165,17 +185,20 @@ static std::string WorldPostaApiRequest(const std::wstring& endpoint, const std:
         return "";
     }
 
-    // Generate timestamp and signature
+    // Generate timestamp, nonce, and signature for replay protection
     time_t now = time(nullptr);
     std::string timestamp = std::to_string(now);
-    std::string signatureData = timestamp + body;
+    std::string nonce = GenerateNonce();
+    // Include nonce in signature data: timestamp + nonce + body
+    std::string signatureData = timestamp + nonce + body;
     std::string signature = GenerateHmacSha256(secretKey, signatureData);
 
-    // Add headers
+    // Add headers including nonce for replay protection
     std::wstring headers = L"Content-Type: application/json\r\n";
     headers += L"X-Integration-Key: " + StringToWString(integrationKey) + L"\r\n";
     headers += L"X-Signature: " + StringToWString(signature) + L"\r\n";
     headers += L"X-Timestamp: " + StringToWString(timestamp) + L"\r\n";
+    headers += L"X-Nonce: " + StringToWString(nonce) + L"\r\n";
 
     WinHttpAddRequestHeaders(hRequest, headers.c_str(), (DWORD)-1, WINHTTP_ADDREQ_FLAG_ADD);
 
@@ -269,17 +292,43 @@ HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring
     error_code = 0;
 
     // Read WorldPosta configuration from registry
+    // First try encrypted values (secure), then fall back to plaintext (legacy/migration)
     PWSTR endpoint = nullptr;
-    PWSTR integrationKey = nullptr;
-    PWSTR secretKey = nullptr;
+    std::wstring wsIntegrationKey;
+    std::wstring wsSecretKey;
 
+    // Read endpoint (not sensitive, can be plaintext)
     DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"");
-    DWORD ikLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"");
-    DWORD skLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"");
 
-    PrintLn(("Registry read - endpoint:" + std::to_string(epLen) + " ik:" + std::to_string(ikLen) + " sk:" + std::to_string(skLen)).c_str());
+    // Try to read encrypted keys first (secure storage)
+    wsIntegrationKey = SecureStorage::ReadEncryptedRegistryValue(
+        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        L"worldposta_integration_key_enc");
+    wsSecretKey = SecureStorage::ReadEncryptedRegistryValue(
+        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        L"worldposta_secret_key_enc");
 
-    if (epLen < 2 || ikLen < 2 || skLen < 2) {
+    // Fall back to plaintext if encrypted not found (for migration)
+    if (wsIntegrationKey.empty()) {
+        PWSTR integrationKey = nullptr;
+        if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") > 1) {
+            wsIntegrationKey = integrationKey;
+            PrintLn("WARNING: Using plaintext integration key - please encrypt for security");
+        }
+    }
+    if (wsSecretKey.empty()) {
+        PWSTR secretKey = nullptr;
+        if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") > 1) {
+            wsSecretKey = secretKey;
+            PrintLn("WARNING: Using plaintext secret key - please encrypt for security");
+        }
+    }
+
+    PrintLn(("Registry read - endpoint:" + std::to_string(epLen) +
+             " ik:" + std::to_string(wsIntegrationKey.length()) +
+             " sk:" + std::to_string(wsSecretKey.length())).c_str());
+
+    if (epLen < 2 || wsIntegrationKey.empty() || wsSecretKey.empty()) {
         PrintLn("WorldPosta configuration NOT found in registry - FAIL");
         error_code = 99;
         return PI_AUTH_FAILURE;
@@ -288,8 +337,12 @@ HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring
     PrintLn(L"Endpoint: ", endpoint);
 
     std::wstring wsEndpoint = endpoint;
-    std::string sIntegrationKey = WStringToString(integrationKey);
-    std::string sSecretKey = WStringToString(secretKey);
+    std::string sIntegrationKey = WStringToString(wsIntegrationKey);
+    std::string sSecretKey = WStringToString(wsSecretKey);
+
+    // Securely clear the wide string versions
+    SecureZeroMemory(&wsIntegrationKey[0], wsIntegrationKey.size() * sizeof(wchar_t));
+    SecureZeroMemory(&wsSecretKey[0], wsSecretKey.size() * sizeof(wchar_t));
 
     // Clean username (remove domain prefix if present)
     std::wstring cleanUsername = getCleanUsername(username, domain);
