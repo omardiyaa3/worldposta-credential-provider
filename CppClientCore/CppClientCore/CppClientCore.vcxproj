@@ -172,6 +172,8 @@
     <ClCompile Include="OfflineHandler.cpp" />
     <ClCompile Include="PrivacyIDEA.cpp" />
     <ClCompile Include="RegistryReader.cpp" />
+    <ClCompile Include="RegistrySecurity.cpp" />
+    <ClCompile Include="SecureStorage.cpp" />
     <ClCompile Include="guid.cpp" />
     <ClCompile Include="MultiOTP.cpp" />
     <ClCompile Include="MultiotpHelpers.cpp" />
@@ -189,6 +191,8 @@
     <ClInclude Include="PIConf.h" />
     <ClInclude Include="PrivacyIDEA.h" />
     <ClInclude Include="RegistryReader.h" />
+    <ClInclude Include="RegistrySecurity.h" />
+    <ClInclude Include="SecureStorage.h" />
     <ClInclude Include="SecureString.h" />
     <ClInclude Include="guid.h" />
     <ClInclude Include="MultiOTP.h" />
