@@ -123,15 +123,22 @@ HRESULT CProvider::SetUsageScenario(
 
 	if (hr == S_OK)
 	{
-		if (!Shared::IsRequiredForScenario(cpus, PROVIDER))
+		ReleaseDebugPrint("Checking IsRequiredForScenario...");
+		bool isRequired = Shared::IsRequiredForScenario(cpus, PROVIDER);
+		ReleaseDebugPrint(std::string("IsRequiredForScenario returned: ") + (isRequired ? "TRUE" : "FALSE"));
+
+		if (!isRequired)
 		{
-			DebugPrint("CP is not enumerated because of the configuration for this scenario.");
+			ReleaseDebugPrint("*** CP DISABLED *** Not enumerated due to scenario configuration - returning E_NOTIMPL");
 			hr = E_NOTIMPL;
+		}
+		else
+		{
+			ReleaseDebugPrint("*** CP ENABLED *** Will proceed with credential enumeration");
 		}
 	}
 
-	DebugPrint("SetScenario result:");
-	DebugPrint(hr);
+	ReleaseDebugPrint("SetUsageScenario final result: " + std::to_string(hr));
 
 	return hr;
 }

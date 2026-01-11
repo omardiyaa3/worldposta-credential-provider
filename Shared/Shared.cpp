@@ -28,57 +28,73 @@
 namespace Shared {
 	bool IsRequiredForScenario(CREDENTIAL_PROVIDER_USAGE_SCENARIO cpus, int caller)
 	{
-		DebugPrint(__FUNCTION__);
+		ReleaseDebugPrint(__FUNCTION__);
 		if (caller != FILTER && caller != PROVIDER)
 		{
-			DebugPrint("Invalid argument for caller: " + std::to_string(caller));
+			ReleaseDebugPrint("Invalid argument for caller: " + std::to_string(caller));
 			return false;
 		}
+
+		ReleaseDebugPrint(std::string("Caller: ") + (caller == FILTER ? "FILTER" : "PROVIDER"));
+		ReleaseDebugPrint("Checking registry for scenario: " + CPUStoString(cpus));
 
 		MultiOTPRegistryReader rr(L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}\\");
 		std::wstring entry;
 		const bool isRemote = Shared::IsCurrentSessionRemote();
+		ReleaseDebugPrint(std::string("IsRemoteSession: ") + (isRemote ? "true" : "false"));
 
 		switch (cpus)
 		{
 		case CPUS_LOGON:
 		{
 			entry = rr.getRegistry(L"cpus_logon");
+			ReleaseDebugPrint(L"cpus_logon registry value: [" + entry + L"]");
 			break;
 		}
 		case CPUS_UNLOCK_WORKSTATION:
 		{
 			entry = rr.getRegistry(L"cpus_unlock");
+			ReleaseDebugPrint(L"cpus_unlock registry value: [" + entry + L"]");
 			break;
 		}
 		case CPUS_CREDUI:
 		{
 			entry = rr.getRegistry(L"cpus_credui");
+			ReleaseDebugPrint(L"cpus_credui registry value: [" + entry + L"]");
 			break;
 		}
 		case CPUS_CHANGE_PASSWORD:
 		case CPUS_PLAP:
 		case CPUS_INVALID:
+			ReleaseDebugPrint("Scenario not supported (CHANGE_PASSWORD/PLAP/INVALID) - returning false");
 			return false;
 		default:
+			ReleaseDebugPrint("Unknown scenario - returning false");
 			return false;
 		}
 
 		// default - no additional config found
-		if (entry.empty()) return true;
-		
+		if (entry.empty()) {
+			ReleaseDebugPrint("Registry entry empty - defaulting to ENABLED (return true)");
+			return true;
+		}
+
+		bool result = false;
 		if (caller == FILTER)
 		{
 			// Check that we don't filter if the CP is not enumerated
-			return (entry == L"0e" || (entry == L"1e" && isRemote) || (entry == L"2e" && (!isRemote || cpus==CPUS_LOGON || cpus == CPUS_UNLOCK_WORKSTATION)));
+			result = (entry == L"0e" || (entry == L"1e" && isRemote) || (entry == L"2e" && (!isRemote || cpus==CPUS_LOGON || cpus == CPUS_UNLOCK_WORKSTATION)));
+			ReleaseDebugPrint(std::string("FILTER result: ") + (result ? "true" : "false"));
 		}
 		else if (caller == PROVIDER)
 		{
 			// 0 means fully enabled, 1-only remote, 2-non-remote, 3-disabled
-			return ((entry.at(0) == L'1' && isRemote) || (entry.at(0) == L'2' && (!isRemote || cpus == CPUS_LOGON || cpus == CPUS_UNLOCK_WORKSTATION)) || (entry.at(0) == L'0'));
+			result = ((entry.at(0) == L'1' && isRemote) || (entry.at(0) == L'2' && (!isRemote || cpus == CPUS_LOGON || cpus == CPUS_UNLOCK_WORKSTATION)) || (entry.at(0) == L'0'));
+			ReleaseDebugPrint(std::string("PROVIDER check - entry[0]=") + std::string(1, (char)entry.at(0)) + ", isRemote=" + (isRemote ? "true" : "false"));
+			ReleaseDebugPrint(std::string("PROVIDER result: ") + (result ? "ENABLED" : "DISABLED"));
 		}
 
-		return false;
+		return result;
 	}
 
 #define TERMINAL_SERVER_KEY _T("SYSTEM\\CurrentControlSet\\Control\\Terminal Server\\")

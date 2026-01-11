@@ -151,13 +151,14 @@
     </Property>
     <Property Id="MULTIOTP_LOCALSERVERONLY"> <!-- Undefined means not checked -->
     </Property>
-    <Property Id="CPUS_LOGON" Value="3d">
+    <!-- CPUS values: 0=fully enabled, 1=remote-only, 2=local-only, 3=disabled. Suffix 'e' enables filter -->
+    <Property Id="CPUS_LOGON" Value="0e">
       <RegistrySearch Id="SearchCPUSLogon" Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}" Name="cpus_logon" Win64="$(var.Win64)" Type="raw" />
     </Property>
-    <Property Id="CPUS_UNLOCK" Value="3d">
+    <Property Id="CPUS_UNLOCK" Value="0e">
       <RegistrySearch Id="SearchCPUSUnlock" Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}" Name="cpus_unlock" Win64="$(var.Win64)" Type="raw" />
     </Property>
-    <Property Id="CPUS_CREDUI" Value="3d">
+    <Property Id="CPUS_CREDUI" Value="0e">
       <RegistrySearch Id="SearchCPUSCredUI" Root="HKCR" Key="CLSID\{11A4894C-0968-40D0-840E-FAA4B8984916}" Name="cpus_credui" Win64="$(var.Win64)" Type="raw" />
     </Property>
     <Property Id="MULTIOTP_NUMLOCKON">

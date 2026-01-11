@@ -32,8 +32,10 @@
     <Property Id="WORLDPOSTA_ENDPOINT" Value="https://api.worldposta.com"/>
     <Property Id="WORLDPOSTA_INTEGRATION_KEY" Secure="yes"/>
     <Property Id="WORLDPOSTA_SECRET_KEY" Hidden="yes" Secure="yes"/>
-    <Property Id="CPUS_LOGON" Value="3d"/>
-    <Property Id="CPUS_UNLOCK" Value="3d"/>
+    <!-- CPUS values: 0=fully enabled, 1=remote-only, 2=local-only, 3=disabled. Suffix 'e' enables filter, 'd' disables filter -->
+    <!-- For RDP with NLA to work, we need "0e" (enabled + filter) or "1e" (remote-only + filter) -->
+    <Property Id="CPUS_LOGON" Value="0e"/>
+    <Property Id="CPUS_UNLOCK" Value="0e"/>
 
     <Feature Id="ProductFeature" Title="WorldPosta Authenticator" Level="1">
       <ComponentRef Id="CredentialProviderDLL"/>
