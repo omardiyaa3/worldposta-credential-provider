@@ -131,6 +131,9 @@
         <!-- Timeouts -->
         <RegistryValue Name="multiOTPTimeout" Type="integer" Value="60"/>
         <RegistryValue Name="multiOTPServerTimeout" Type="integer" Value="10"/>
+
+        <!-- Display Push Link (1 = enabled) -->
+        <RegistryValue Name="multiOTPDisplayPushLink" Type="integer" Value="1"/>
       </RegistryKey>
     </Component>
   </Fragment>

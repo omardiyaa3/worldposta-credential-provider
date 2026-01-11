@@ -380,6 +380,11 @@ HRESULT Utilities::SetScenario(
 		DebugPrint("SetScenario: LOGON_TWO_STEP");
 		hr = SetFieldStatePairBatch(pCredential, pCPCE, s_rgScenarioLogonFirstStepUserLDAP);
 		break;
+	case SCENARIO::AUTH_METHOD_CHOICE:
+		DebugPrint("SetScenario: AUTH_METHOD_CHOICE");
+		// Show the Push and OTP choice buttons
+		hr = SetFieldStatePairBatch(pCredential, pCPCE, s_rgScenarioAuthMethodChoice);
+		break;
 	case SCENARIO::NO_CHANGE:
 		DebugPrint("SetScenario: NO_CHANGE");
 	default:

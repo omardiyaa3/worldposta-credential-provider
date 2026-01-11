@@ -20,7 +20,9 @@ enum FIELD_ID
 	FID_CODE_SENT_EMAIL = 14,
 	FID_REQUIRE_PUSH = 15,
 	FID_PUSH_WAITING = 16,
-	FID_NUM_FIELDS = 17
+	FID_AUTH_CHOICE_PUSH = 17,    // Button to choose Push authentication
+	FID_AUTH_CHOICE_OTP = 18,     // Button to choose OTP authentication
+	FID_NUM_FIELDS = 19
 };
 
 // The first value indicates when the tile is displayed (selected, not selected)
@@ -57,7 +59,9 @@ static const FIELD_STATE_PAIR s_rgScenarioDisplayAllFields[] =
 	{ CPFS_HIDDEN, CPFIS_NONE },           // FID_CODE_SENT_SMS
 	{ CPFS_HIDDEN, CPFIS_NONE },           // FID_CODE_SENT_EMAIL
 	{ CPFS_HIDDEN, CPFIS_NONE },           // FID_REQUIRE_PUSH
-	{ CPFS_HIDDEN, CPFIS_NONE }            // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE },           // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE },           // FID_AUTH_CHOICE_PUSH
+	{ CPFS_HIDDEN, CPFIS_NONE }            // FID_AUTH_CHOICE_OTP
 };
 
 static const FIELD_STATE_PAIR s_rgScenarioUnlockPasswordOTP[] =
@@ -78,7 +82,9 @@ static const FIELD_STATE_PAIR s_rgScenarioUnlockPasswordOTP[] =
 	{ CPFS_HIDDEN, CPFIS_NONE},           // FID_CODE_SENT_SMS
 	{ CPFS_HIDDEN, CPFIS_NONE},           // FID_CODE_SENT_EMAIL
 	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE},           // FID_REQUIRE_PUSH
-	{ CPFS_HIDDEN, CPFIS_NONE}            // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},           // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},           // FID_AUTH_CHOICE_PUSH
+	{ CPFS_HIDDEN, CPFIS_NONE}            // FID_AUTH_CHOICE_OTP
 };
 
 static const FIELD_STATE_PAIR s_rgScenarioSecondStepOTP[] =
@@ -99,7 +105,33 @@ static const FIELD_STATE_PAIR s_rgScenarioSecondStepOTP[] =
 	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE},           // FID_CODE_SENT_SMS
 	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE},           // FID_CODE_SENT_EMAIL
 	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE},           // FID_REQUIRE_PUSH
-	{ CPFS_HIDDEN, CPFIS_NONE}            // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},           // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},           // FID_AUTH_CHOICE_PUSH
+	{ CPFS_HIDDEN, CPFIS_NONE}            // FID_AUTH_CHOICE_OTP
+};
+
+// New scenario: Auth method choice - shows Push and OTP buttons
+static const FIELD_STATE_PAIR s_rgScenarioAuthMethodChoice[] =
+{
+	{ CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },					// FID_LOGO
+	{ CPFS_DISPLAY_IN_BOTH, CPFIS_NONE },					// FID_LARGE_TEXT
+	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },			// FID_SMALL_TEXT
+	{ CPFS_HIDDEN, CPFIS_NONE },							// FID_USERNAME
+	{ CPFS_HIDDEN, CPFIS_NONE },							// FID_LDAP_PASS
+	{ CPFS_HIDDEN, CPFIS_NONE },							// FID_OTP (hidden - will show after OTP button clicked)
+	{ CPFS_HIDDEN, CPFIS_NONE },							// FID_NEW_PASS_1
+	{ CPFS_HIDDEN, CPFIS_NONE },							// FID_NEW_PASS_2
+	{ CPFS_HIDDEN, CPFIS_NONE },							// FID_SUBMIT_BUTTON (hidden - will show after OTP button clicked)
+	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE },			// FID_SUBTEXT
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_LASTUSER_LOGGED
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_REQUIRE_SMS
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_REQUIRE_EMAIL
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_CODE_SENT_SMS
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_CODE_SENT_EMAIL
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_REQUIRE_PUSH
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_PUSH_WAITING
+	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE},           // FID_AUTH_CHOICE_PUSH - VISIBLE
+	{ CPFS_DISPLAY_IN_SELECTED_TILE, CPFIS_NONE}            // FID_AUTH_CHOICE_OTP - VISIBLE
 };
 
 static const FIELD_STATE_PAIR s_rgScenarioLogonFirstStepUserLDAP[] =
@@ -120,7 +152,9 @@ static const FIELD_STATE_PAIR s_rgScenarioLogonFirstStepUserLDAP[] =
 	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_CODE_SENT_SMS
 	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_CODE_SENT_EMAIL
 	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_REQUIRE_PUSH
-	{ CPFS_HIDDEN, CPFIS_NONE}                              // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_AUTH_CHOICE_PUSH
+	{ CPFS_HIDDEN, CPFIS_NONE}                              // FID_AUTH_CHOICE_OTP
 };
 
 // Show all 3 fields for password change
@@ -142,7 +176,9 @@ static const FIELD_STATE_PAIR s_rgScenarioPasswordChange[] =
 	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_CODE_SENT_SMS
 	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_CODE_SENT_EMAIL
 	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_REQUIRE_PUSH
-	{ CPFS_HIDDEN, CPFIS_NONE}                              // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE},                             // FID_AUTH_CHOICE_PUSH
+	{ CPFS_HIDDEN, CPFIS_NONE}                              // FID_AUTH_CHOICE_OTP
 };
 
 static const FIELD_STATE_PAIR s_rgScenarioUnlockFirstStepPassword[] =
@@ -163,7 +199,9 @@ static const FIELD_STATE_PAIR s_rgScenarioUnlockFirstStepPassword[] =
 	{ CPFS_HIDDEN, CPFIS_NONE },                             // FID_CODE_SENT_SMS
 	{ CPFS_HIDDEN, CPFIS_NONE },                             // FID_CODE_SENT_EMAIL
 	{ CPFS_HIDDEN, CPFIS_NONE },                             // FID_REQUIRE_PUSH
-	{ CPFS_HIDDEN, CPFIS_NONE }                              // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE },                             // FID_PUSH_WAITING
+	{ CPFS_HIDDEN, CPFIS_NONE },                             // FID_AUTH_CHOICE_PUSH
+	{ CPFS_HIDDEN, CPFIS_NONE }                              // FID_AUTH_CHOICE_OTP
 };
 
 // Field descriptors for unlock and logon.
@@ -189,4 +227,6 @@ static CREDENTIAL_PROVIDER_FIELD_DESCRIPTOR s_rgScenarioCredProvFieldDescriptors
 	{ FID_CODE_SENT_EMAIL, CPFT_COMMAND_LINK,  L"OTP token sent by EMAIL"},
 	{ FID_REQUIRE_PUSH, CPFT_COMMAND_LINK,  L"Send Push Notification"},
 	{ FID_PUSH_WAITING, CPFT_SMALL_TEXT,  L"Waiting for approval..."},
+	{ FID_AUTH_CHOICE_PUSH, CPFT_COMMAND_LINK,  L"Approve with Push Notification"},
+	{ FID_AUTH_CHOICE_OTP, CPFT_COMMAND_LINK,  L"Enter One-Time Password"},
 };

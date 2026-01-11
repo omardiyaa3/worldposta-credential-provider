@@ -23,6 +23,7 @@ enum class SCENARIO
 	LOGON_TWO_STEP = 4,
 	UNLOCK_TWO_STEP = 5,
 	CHANGE_PASSWORD = 6,
+	AUTH_METHOD_CHOICE = 7,  // Show Push/OTP choice buttons
 };
 
 class Utilities

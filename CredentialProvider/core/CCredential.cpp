@@ -696,6 +696,65 @@ HRESULT CCredential::CommandLinkClicked(__in DWORD dwFieldID)
 	   case FID_PUSH_WAITING:
 		   // Do nothing when waiting message is clicked
 		   break;
+	   case FID_AUTH_CHOICE_PUSH:
+		   // User chose Push authentication
+		   if (_pCredProvCredentialEvents) {
+			   DebugPrint("User chose PUSH authentication");
+			   _config->provider.pCredProvCredential = this;
+			   _config->provider.pCredProvCredentialEvents = _pCredProvCredentialEvents;
+			   _config->provider.field_strings = _rgFieldStrings;
+			   _util.ReadFieldValues();
+
+			   // Hide the choice buttons and show waiting message
+			   hideCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_AUTH_CHOICE_PUSH);
+			   hideCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_AUTH_CHOICE_OTP);
+			   displayCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_PUSH_WAITING);
+
+			   std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
+			   LPTSTR userSID = getSidFromUsername(cleanUsername);
+
+			   // Send push notification via WorldPosta API
+			   HRESULT error_code;
+			   _piStatus = _privacyIDEA.validateCheck(
+				   _config->credential.username,
+				   _config->credential.domain,
+				   SecureWString(L"push"),
+				   "", error_code, (std::wstring)userSID);
+
+			   if (_piStatus == PI_AUTH_SUCCESS) {
+				   // Push was approved, trigger auto logon
+				   DebugPrint("Push authentication SUCCESS - triggering auto logon");
+				   _config->pushAuthenticationSuccessful = true;
+				   _config->doAutoLogon = true;
+				   _config->bypassPrivacyIDEA = true;
+				   _config->provider.pCredentialProviderEvents->CredentialsChanged(_config->provider.upAdviseContext);
+			   }
+			   else {
+				   // Push failed or timed out, show choice buttons again
+				   DebugPrint("Push authentication FAILED - showing choice buttons again");
+				   hideCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_PUSH_WAITING);
+				   displayCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_AUTH_CHOICE_PUSH);
+				   displayCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_AUTH_CHOICE_OTP);
+			   }
+		   }
+		   break;
+	   case FID_AUTH_CHOICE_OTP:
+		   // User chose OTP authentication - show OTP input field
+		   if (_pCredProvCredentialEvents) {
+			   DebugPrint("User chose OTP authentication - showing OTP field");
+			   _config->provider.pCredProvCredential = this;
+			   _config->provider.pCredProvCredentialEvents = _pCredProvCredentialEvents;
+
+			   // Hide choice buttons
+			   hideCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_AUTH_CHOICE_PUSH);
+			   hideCPField(_config->provider.pCredProvCredential, _config->provider.pCredProvCredentialEvents, FID_AUTH_CHOICE_OTP);
+
+			   // Show OTP field and submit button
+			   _util.SetScenario(_config->provider.pCredProvCredential,
+				   _config->provider.pCredProvCredentialEvents,
+				   SCENARIO::SECOND_STEP);
+		   }
+		   break;
 	   default:
 		   return E_INVALIDARG;
 	}
@@ -803,13 +862,13 @@ HRESULT CCredential::GetSerialization(
 
 			if (_config->isSecondStep == false && _config->twoStepHideOTP)
 			{
-				// Prepare for the second step (input only OTP)
-				ReleaseDebugPrint(">>> TRANSITIONING TO SECOND STEP <<<");
+				// Prepare for the auth method choice screen (Push or OTP)
+				ReleaseDebugPrint(">>> TRANSITIONING TO AUTH METHOD CHOICE <<<");
 				_config->isSecondStep = true;
 				_config->clearFields = false;
 				_util.SetScenario(_config->provider.pCredProvCredential,
 					_config->provider.pCredProvCredentialEvents,
-					SCENARIO::SECOND_STEP);
+					SCENARIO::AUTH_METHOD_CHOICE);
 				*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
 			}
 			else
