@@ -273,9 +273,9 @@ HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"");
-    DWORD ikLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"");
-    DWORD skLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"");
+    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"");
+    DWORD ikLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"");
+    DWORD skLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"");
 
     PrintLn(("Registry read - endpoint:" + std::to_string(epLen) + " ik:" + std::to_string(ikLen) + " sk:" + std::to_string(skLen)).c_str());
 
@@ -393,9 +393,9 @@ HRESULT MultiOTP::userTokenType(const std::wstring& username, const std::wstring
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"");
-    DWORD ikLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"");
-    DWORD skLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"");
+    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"");
+    DWORD ikLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"");
+    DWORD skLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"");
 
     PrintLn(("Registry read lengths - endpoint:" + std::to_string(epLen) +
              " integrationKey:" + std::to_string(ikLen) +
@@ -425,9 +425,9 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
+    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") < 2) {
         if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found");
         return E_FAIL;
     }
@@ -481,9 +481,9 @@ HRESULT MultiOTP::checkPushStatus()
     PWSTR integrationKey = nullptr;
     PWSTR secretKey = nullptr;
 
-    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_integration_key", &integrationKey, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, MULTIOTP_SETTINGS, L"worldposta_secret_key", &secretKey, L"") < 2) {
+    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") < 2 ||
+        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") < 2) {
         return E_FAIL;
     }
 
