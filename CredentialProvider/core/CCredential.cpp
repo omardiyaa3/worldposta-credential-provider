@@ -995,7 +995,9 @@ HRESULT CCredential::GetSerialization(
 				*pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
 			}
 		}
-		else if (_piStatus == PI_AUTH_SUCCESS || _config->pushAuthenticationSuccessful)
+
+		// Check again after dialog - use 'if' not 'else if' so we proceed after dialog success
+		if (_piStatus == PI_AUTH_SUCCESS || _config->pushAuthenticationSuccessful)
 		{
 			ReleaseDebugPrint(">>> AUTH SUCCESS - Proceeding to Windows Login <<<");
 			ReleaseDebugPrint(L"Username: " + _config->credential.username);
@@ -1027,8 +1029,9 @@ HRESULT CCredential::GetSerialization(
 				retVal = S_FALSE;
 			}
 		}
-		else
+		else if (*pcpgsr != CPGSR_NO_CREDENTIAL_NOT_FINISHED)
 		{
+			// Only show unexpected error if no one else handled the failure
 			ShowErrorMessage(L"Unexpected error", 0);
 
 			// Jump to the first login window
