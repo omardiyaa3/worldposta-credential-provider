@@ -899,8 +899,12 @@ HRESULT CCredential::GetSerialization(
 					}
 					else {
 						ReleaseDebugPrint("Push authentication FAILED or TIMEOUT");
-						AuthDialog::ShowPushResultDialog(NULL,
-							_piStatus == PI_AUTH_FAILURE ? PushResult::DENIED : PushResult::TIMEOUT);
+						// Use credential provider status message instead of popup (popups don't work on secure desktop)
+						if (_piStatus == PI_AUTH_FAILURE) {
+							ShowErrorMessage(L"Push notification was denied", 0);
+						} else {
+							ShowErrorMessage(L"Push notification timed out. Please try again.", 0);
+						}
 						*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
 						_config->isSecondStep = false; // Allow retry
 					}
