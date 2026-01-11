@@ -20,9 +20,9 @@ extern HINSTANCE g_hinst;
 
 // Dialog dimensions (Duo-like) - increased height for footer
 #define DLG_WIDTH 720
-#define DLG_HEIGHT 500
+#define DLG_HEIGHT 520
 #define LEFT_PANEL_WIDTH 230
-#define FOOTER_HEIGHT 70
+#define FOOTER_HEIGHT 60
 #define LOGO_SIZE 150
 
 // Dialog control IDs
@@ -41,6 +41,8 @@ static AuthMethod g_authChoice = AuthMethod::CANCEL;
 static ULONG_PTR g_gdiplusToken = 0;
 static Gdiplus::Image* g_logoImage = nullptr;
 static Gdiplus::Image* g_smallIconImage = nullptr;
+static Gdiplus::Image* g_pushIconImage = nullptr;
+static Gdiplus::Image* g_passcodeIconImage = nullptr;
 
 // Custom window class names
 static const wchar_t* WP_DIALOG_CLASS = L"WorldPostaAuthDialog";
@@ -83,6 +85,16 @@ static void LoadLogoImage() {
     if (g_smallIconImage == nullptr) {
         g_smallIconImage = LoadBitmapFromResource(IDB_WP_SMALL_ICON);
     }
+
+    // Load push icon if not already loaded
+    if (g_pushIconImage == nullptr) {
+        g_pushIconImage = LoadBitmapFromResource(IDB_WP_PUSH_ICON);
+    }
+
+    // Load passcode icon if not already loaded
+    if (g_passcodeIconImage == nullptr) {
+        g_passcodeIconImage = LoadBitmapFromResource(IDB_WP_PASSCODE_ICON);
+    }
 }
 
 // Draw rounded rectangle
@@ -120,7 +132,10 @@ static void DrawWorldPostaLogo(HDC hdc, int centerX, int centerY, int size) {
 }
 
 // Draw auth option button (card style like Duo)
-static void DrawAuthOptionButton(HDC hdc, RECT* rect, const wchar_t* title, const wchar_t* subtitle, bool hover) {
+// Icon types for auth buttons
+enum class AuthIconType { PUSH, PASSCODE };
+
+static void DrawAuthOptionButton(HDC hdc, RECT* rect, const wchar_t* title, const wchar_t* subtitle, bool hover, AuthIconType iconType) {
     using namespace Gdiplus;
 
     Graphics graphics(hdc);
@@ -146,7 +161,7 @@ static void DrawAuthOptionButton(HDC hdc, RECT* rect, const wchar_t* title, cons
     Pen borderPen(borderColor, 1);
     graphics.DrawPath(&borderPen, &path);
 
-    // Icon on left - draw the small icon with logo
+    // Icon on left - draw the appropriate icon based on type
     int iconSize = 45;
     int iconX = rect->left + 20;
     int iconY = rect->top + (rect->bottom - rect->top - iconSize) / 2;
@@ -154,11 +169,20 @@ static void DrawAuthOptionButton(HDC hdc, RECT* rect, const wchar_t* title, cons
     // Load images if needed
     LoadLogoImage();
 
-    if (g_smallIconImage != nullptr) {
-        // Draw the small icon (logo in green circle)
-        graphics.DrawImage(g_smallIconImage, iconX, iconY, iconSize, iconSize);
+    // Select the appropriate icon
+    Gdiplus::Image* iconImage = nullptr;
+    if (iconType == AuthIconType::PUSH && g_pushIconImage != nullptr) {
+        iconImage = g_pushIconImage;
+    } else if (iconType == AuthIconType::PASSCODE && g_passcodeIconImage != nullptr) {
+        iconImage = g_passcodeIconImage;
+    } else if (g_smallIconImage != nullptr) {
+        iconImage = g_smallIconImage;  // Fallback to generic icon
+    }
+
+    if (iconImage != nullptr) {
+        graphics.DrawImage(iconImage, iconX, iconY, iconSize, iconSize);
     } else {
-        // Fallback: draw green circle if image not loaded
+        // Fallback: draw green circle if no image loaded
         SolidBrush iconBrush(Color(255, 103, 154, 65));
         graphics.FillEllipse(&iconBrush, iconX, iconY, iconSize, iconSize);
     }
@@ -227,12 +251,13 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             otpButtonRect = {rightPanelX + 40, startY + buttonHeight + spacing,
                             rightPanelX + 40 + buttonWidth, startY + buttonHeight * 2 + spacing};
 
-            // Cancel button in footer - smaller to fit properly
-            int cancelBtnWidth = 90;
-            int cancelBtnHeight = 32;
-            int cancelBtnY = DLG_HEIGHT - FOOTER_HEIGHT + (FOOTER_HEIGHT - cancelBtnHeight) / 2;
-            cancelButtonRect = {DLG_WIDTH - cancelBtnWidth - 20, cancelBtnY,
-                               DLG_WIDTH - 20, cancelBtnY + cancelBtnHeight};
+            // Cancel button in footer - small and centered vertically
+            int cancelBtnWidth = 80;
+            int cancelBtnHeight = 28;
+            int footerStartY = DLG_HEIGHT - FOOTER_HEIGHT;
+            int cancelBtnY = footerStartY + (FOOTER_HEIGHT - cancelBtnHeight) / 2;
+            cancelButtonRect = {DLG_WIDTH - cancelBtnWidth - 25, cancelBtnY,
+                               DLG_WIDTH - 25, cancelBtnY + cancelBtnHeight};
         }
         return 0;
 
@@ -293,8 +318,8 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             DeleteObject(titleFont);
 
             // Draw auth option buttons
-            DrawAuthOptionButton(memDC, &pushButtonRect, L"WorldPosta Push", L"Send notification to your phone", hoveredButton == 1);
-            DrawAuthOptionButton(memDC, &otpButtonRect, L"Enter Passcode", L"Enter code from your app", hoveredButton == 2);
+            DrawAuthOptionButton(memDC, &pushButtonRect, L"WorldPosta Push", L"Send notification to your phone", hoveredButton == 1, AuthIconType::PUSH);
+            DrawAuthOptionButton(memDC, &otpButtonRect, L"Enter Passcode", L"Enter code from your app", hoveredButton == 2, AuthIconType::PASSCODE);
 
             // Draw footer bar
             RECT footerRect = {0, DLG_HEIGHT - FOOTER_HEIGHT, DLG_WIDTH, DLG_HEIGHT};
