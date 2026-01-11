@@ -9,6 +9,7 @@
 #include <Windows.h>
 #include <wincrypt.h>
 #include <string>
+#include <vector>
 
 #pragma comment(lib, "crypt32.lib")
 
