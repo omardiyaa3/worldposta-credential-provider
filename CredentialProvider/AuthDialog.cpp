@@ -18,11 +18,11 @@ extern HINSTANCE g_hinst;
 #define WP_LIGHT_GRAY RGB(245, 245, 245)
 #define WP_BORDER_GRAY RGB(220, 220, 220)
 
-// Dialog dimensions (Duo-like) - increased height for footer
+// Dialog dimensions (Duo-like)
 #define DLG_WIDTH 720
-#define DLG_HEIGHT 550
+#define DLG_HEIGHT 520
 #define LEFT_PANEL_WIDTH 230
-#define FOOTER_HEIGHT 55
+#define FOOTER_HEIGHT 90
 #define LOGO_SIZE 150
 
 // Dialog control IDs
@@ -251,13 +251,13 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             otpButtonRect = {rightPanelX + 40, startY + buttonHeight + spacing,
                             rightPanelX + 40 + buttonWidth, startY + buttonHeight * 2 + spacing};
 
-            // Cancel button in footer - small and centered vertically with padding
-            int cancelBtnWidth = 70;
-            int cancelBtnHeight = 26;
-            int footerStartY = DLG_HEIGHT - FOOTER_HEIGHT;
-            int cancelBtnY = footerStartY + (FOOTER_HEIGHT - cancelBtnHeight) / 2;
-            cancelButtonRect = {DLG_WIDTH - cancelBtnWidth - 30, cancelBtnY,
-                               DLG_WIDTH - 30, cancelBtnY + cancelBtnHeight};
+            // Cancel button in footer - use fixed positions to ensure visibility
+            // Title bar takes ~40px, so client area is ~490px for 530px window
+            int cancelBtnWidth = 100;
+            int cancelBtnHeight = 35;
+            int cancelBtnX = DLG_WIDTH - cancelBtnWidth - 20;
+            int cancelBtnY = 410;  // Fixed position that's definitely visible
+            cancelButtonRect = {cancelBtnX, cancelBtnY, cancelBtnX + cancelBtnWidth, cancelBtnY + cancelBtnHeight};
         }
         return 0;
 
@@ -277,15 +277,15 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             FillRect(memDC, &clientRect, whiteBrush);
             DeleteObject(whiteBrush);
 
-            // Draw left panel background (light gray)
-            RECT leftPanel = {0, 0, LEFT_PANEL_WIDTH, DLG_HEIGHT - FOOTER_HEIGHT};
+            // Draw left panel background (light gray) - stops at footer
+            RECT leftPanel = {0, 0, LEFT_PANEL_WIDTH, 390};
             HBRUSH leftBrush = CreateSolidBrush(RGB(250, 250, 250));
             FillRect(memDC, &leftPanel, leftBrush);
             DeleteObject(leftBrush);
 
-            // Draw logo in center of left panel
+            // Draw logo in center of left panel (above footer)
             int logoCenterX = LEFT_PANEL_WIDTH / 2;
-            int logoCenterY = (DLG_HEIGHT - FOOTER_HEIGHT) / 2 - 20;
+            int logoCenterY = 180;  // Fixed position for logo center
             DrawWorldPostaLogo(memDC, logoCenterX, logoCenterY, LOGO_SIZE);
 
             // Draw "Powered by WorldPosta" text
@@ -321,16 +321,16 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             DrawAuthOptionButton(memDC, &pushButtonRect, L"WorldPosta Push", L"Send notification to your phone", hoveredButton == 1, AuthIconType::PUSH);
             DrawAuthOptionButton(memDC, &otpButtonRect, L"Enter Passcode", L"Enter code from your app", hoveredButton == 2, AuthIconType::PASSCODE);
 
-            // Draw footer bar
-            RECT footerRect = {0, DLG_HEIGHT - FOOTER_HEIGHT, DLG_WIDTH, DLG_HEIGHT};
+            // Draw footer bar - use fixed position
+            RECT footerRect = {0, 390, DLG_WIDTH, 480};
             HBRUSH footerBrush = CreateSolidBrush(WP_DARK_BLUE);
             FillRect(memDC, &footerRect, footerBrush);
             DeleteObject(footerBrush);
 
             // Draw cancel button in footer
-            DrawRoundedRect(memDC, &cancelButtonRect, 4, WP_WHITE, WP_WHITE);
+            DrawRoundedRect(memDC, &cancelButtonRect, 6, WP_WHITE, WP_WHITE);
             SetTextColor(memDC, WP_DARK_BLUE);
-            HFONT btnFont = CreateFontW(12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            HFONT btnFont = CreateFontW(14, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             oldFont = (HFONT)SelectObject(memDC, btnFont);
