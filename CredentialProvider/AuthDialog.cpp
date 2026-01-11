@@ -251,12 +251,11 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             otpButtonRect = {rightPanelX + 40, startY + buttonHeight + spacing,
                             rightPanelX + 40 + buttonWidth, startY + buttonHeight * 2 + spacing};
 
-            // Cancel button in footer - use fixed positions to ensure visibility
-            // Title bar takes ~40px, so client area is ~490px for 530px window
+            // Cancel button in footer - positioned at top edge of footer
             int cancelBtnWidth = 100;
             int cancelBtnHeight = 35;
             int cancelBtnX = DLG_WIDTH - cancelBtnWidth - 20;
-            int cancelBtnY = 410;  // Fixed position that's definitely visible
+            int cancelBtnY = 398;  // At top edge of footer
             cancelButtonRect = {cancelBtnX, cancelBtnY, cancelBtnX + cancelBtnWidth, cancelBtnY + cancelBtnHeight};
         }
         return 0;
@@ -278,7 +277,7 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             DeleteObject(whiteBrush);
 
             // Draw left panel background (light gray) - stops at footer
-            RECT leftPanel = {0, 0, LEFT_PANEL_WIDTH, 390};
+            RECT leftPanel = {0, 0, LEFT_PANEL_WIDTH, 393};
             HBRUSH leftBrush = CreateSolidBrush(RGB(250, 250, 250));
             FillRect(memDC, &leftPanel, leftBrush);
             DeleteObject(leftBrush);
@@ -321,8 +320,8 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             DrawAuthOptionButton(memDC, &pushButtonRect, L"WorldPosta Push", L"Send notification to your phone", hoveredButton == 1, AuthIconType::PUSH);
             DrawAuthOptionButton(memDC, &otpButtonRect, L"Enter Passcode", L"Enter code from your app", hoveredButton == 2, AuthIconType::PASSCODE);
 
-            // Draw footer bar - use fixed position
-            RECT footerRect = {0, 390, DLG_WIDTH, 480};
+            // Draw footer bar - slim footer
+            RECT footerRect = {0, 393, DLG_WIDTH, 440};
             HBRUSH footerBrush = CreateSolidBrush(WP_DARK_BLUE);
             FillRect(memDC, &footerRect, footerBrush);
             DeleteObject(footerBrush);
