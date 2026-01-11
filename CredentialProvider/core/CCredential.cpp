@@ -705,6 +705,13 @@ HRESULT CCredential::GetSerialization(
 	__out CREDENTIAL_PROVIDER_STATUS_ICON* pcpsiOptionalStatusIcon
 )
 {
+	// CRITICAL LOGGING
+	ReleaseDebugPrint("=== GetSerialization() CALLED ===");
+	ReleaseDebugPrint(L"piStatus: " + std::to_wstring(_piStatus));
+	ReleaseDebugPrint(L"pushAuthenticationSuccessful: " + std::to_wstring(_config->pushAuthenticationSuccessful));
+	ReleaseDebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
+	ReleaseDebugPrint(L"twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP));
+
 	DebugPrint(__FUNCTION__);
 	*pcpgsr = CPGSR_RETURN_NO_CREDENTIAL_FINISHED;
 
@@ -775,11 +782,20 @@ HRESULT CCredential::GetSerialization(
 			return S_FALSE;
 		}
 		// Check if we are pre 2nd step or failure
+		ReleaseDebugPrint("GetSerialization: Checking auth status...");
+		ReleaseDebugPrint(L"  piStatus != PI_AUTH_SUCCESS: " + std::to_wstring(_piStatus != PI_AUTH_SUCCESS));
+		ReleaseDebugPrint(L"  pushAuthSuccess == false: " + std::to_wstring(_config->pushAuthenticationSuccessful == false));
+
 		if (_piStatus != PI_AUTH_SUCCESS && _config->pushAuthenticationSuccessful == false)
 		{
+			ReleaseDebugPrint("GetSerialization: Auth not successful, checking if need second step...");
+			ReleaseDebugPrint(L"  isSecondStep == false: " + std::to_wstring(_config->isSecondStep == false));
+			ReleaseDebugPrint(L"  twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP));
+
 			if (_config->isSecondStep == false && _config->twoStepHideOTP)
 			{
 				// Prepare for the second step (input only OTP)
+				ReleaseDebugPrint(">>> TRANSITIONING TO SECOND STEP <<<");
 				_config->isSecondStep = true;
 				_config->clearFields = false;
 				_util.SetScenario(_config->provider.pCredProvCredential,
@@ -830,6 +846,10 @@ HRESULT CCredential::GetSerialization(
 		}
 		else if (_piStatus == PI_AUTH_SUCCESS || _config->pushAuthenticationSuccessful)
 		{
+			ReleaseDebugPrint(">>> AUTH SUCCESS - Proceeding to Windows Login <<<");
+			ReleaseDebugPrint(L"Username: " + _config->credential.username);
+			ReleaseDebugPrint(L"Domain: " + _config->credential.domain);
+
 			// Reset the authentication
 			_piStatus = PI_STATUS_NOT_SET;
 			_config->pushAuthenticationSuccessful = false;
@@ -915,6 +935,15 @@ void CCredential::PushAuthenticationCallback(bool success)
 // Connect is called first after the submit button is pressed.
 HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 {
+	// CRITICAL LOGGING - Always log in release builds
+	ReleaseDebugPrint("=== Connect() CALLED ===");
+	ReleaseDebugPrint(L"twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP));
+	ReleaseDebugPrint(L"isSecondStep: " + std::to_wstring(_config->isSecondStep));
+	ReleaseDebugPrint(L"bypassPrivacyIDEA: " + std::to_wstring(_config->bypassPrivacyIDEA));
+	ReleaseDebugPrint(L"Username: " + _config->credential.username);
+	ReleaseDebugPrint(L"Domain: " + _config->credential.domain);
+	ReleaseDebugPrint(L"OTP field value: '" + _config->credential.otp + L"'");
+
 	DebugPrint(__FUNCTION__);
 	DebugPrint("=== Connect START ===");
 	DebugPrint(L"twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP));
@@ -1178,8 +1207,32 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 	}
 
 	DebugPrint(L"Decision point - twoStepHideOTP: " + std::to_wstring(_config->twoStepHideOTP) + L", isSecondStep: " + std::to_wstring(_config->isSecondStep));
+	DebugPrint(L"OTP value check: '" + _config->credential.otp + L"'");
 
-	if (_config->twoStepHideOTP && !_config->isSecondStep)
+	// IMPORTANT: If user already entered an OTP (single-step mode where OTP field was visible),
+	// validate it immediately instead of transitioning to second step
+	bool hasOtpValue = !_config->credential.otp.empty();
+	if (hasOtpValue && !_config->isSecondStep) {
+		DebugPrint("OTP already entered in single-step mode - validating immediately");
+		_piStatus = _privacyIDEA.validateCheck(
+			_config->credential.username,
+			_config->credential.domain,
+			SecureWString(_config->credential.otp.c_str()),
+			"", error_code, (std::wstring)userSID);
+		DebugPrint(L"validateCheck result: " + std::to_wstring(_piStatus));
+		if (_piStatus == PI_AUTH_SUCCESS)
+		{
+			DebugPrint("OTP validation SUCCESS - single step mode");
+			storeLastConnectedUserIfNeeded();
+			return S_OK;
+		}
+		else {
+			DebugPrint("OTP validation FAILED - single step mode");
+			_config->defaultOTPFailureText = getErrorMessage(error_code);
+			// Don't return - let it fall through to show error in GetSerialization
+		}
+	}
+	else if (_config->twoStepHideOTP && !_config->isSecondStep)
 	{
 		DebugPrint("=== FIRST STEP: Will transition to second step for OTP ===");
 		if (!_config->twoStepSendEmptyPassword && !_config->twoStepSendPassword)
@@ -1283,6 +1336,12 @@ HRESULT CCredential::Connect(__in IQueryContinueWithStatus* pqcws)
 		}
 	}
 	DebugPrint(L"=== Connect END - piStatus: " + std::to_wstring(_piStatus) + L" ===");
+
+	// CRITICAL LOGGING
+	ReleaseDebugPrint(L"=== Connect() END - piStatus: " + std::to_wstring(_piStatus) + L" ===");
+	ReleaseDebugPrint(L"isSecondStep after Connect: " + std::to_wstring(_config->isSecondStep));
+	ReleaseDebugPrint(L"twoStepHideOTP after Connect: " + std::to_wstring(_config->twoStepHideOTP));
+
 	return S_OK; // always S_OK
 }
 

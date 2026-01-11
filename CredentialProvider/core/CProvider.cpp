@@ -41,7 +41,8 @@ CProvider::CProvider() :
 	DllAddRef();
 
 	_config = std::make_shared<MultiOTPConfiguration>();
-	Logger::Get().releaseLog = _config->releaseLog;
+	// Always enable release logging for troubleshooting - don't override to false
+	Logger::Get().releaseLog = true;  // Force enabled regardless of registry
 }
 
 CProvider::~CProvider()
@@ -86,6 +87,12 @@ HRESULT CProvider::SetUsageScenario(
 	__in DWORD dwFlags
 )
 {
+	// CRITICAL: Log startup to confirm credential provider is loading
+	ReleaseDebugPrint("========================================");
+	ReleaseDebugPrint("WorldPosta Credential Provider STARTING");
+	ReleaseDebugPrint("SetUsageScenario called with: " + Shared::CPUStoString(cpus));
+	ReleaseDebugPrint("========================================");
+
 #ifdef _DEBUG
 	DebugPrint(string(__FUNCTION__) + ": " + Shared::CPUStoString(cpus));
 	_config->printConfiguration();
