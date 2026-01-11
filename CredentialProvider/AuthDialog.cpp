@@ -20,9 +20,9 @@ extern HINSTANCE g_hinst;
 
 // Dialog dimensions (Duo-like) - increased height for footer
 #define DLG_WIDTH 720
-#define DLG_HEIGHT 520
+#define DLG_HEIGHT 550
 #define LEFT_PANEL_WIDTH 230
-#define FOOTER_HEIGHT 60
+#define FOOTER_HEIGHT 55
 #define LOGO_SIZE 150
 
 // Dialog control IDs
@@ -251,13 +251,13 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             otpButtonRect = {rightPanelX + 40, startY + buttonHeight + spacing,
                             rightPanelX + 40 + buttonWidth, startY + buttonHeight * 2 + spacing};
 
-            // Cancel button in footer - small and centered vertically
-            int cancelBtnWidth = 80;
-            int cancelBtnHeight = 28;
+            // Cancel button in footer - small and centered vertically with padding
+            int cancelBtnWidth = 70;
+            int cancelBtnHeight = 26;
             int footerStartY = DLG_HEIGHT - FOOTER_HEIGHT;
             int cancelBtnY = footerStartY + (FOOTER_HEIGHT - cancelBtnHeight) / 2;
-            cancelButtonRect = {DLG_WIDTH - cancelBtnWidth - 25, cancelBtnY,
-                               DLG_WIDTH - 25, cancelBtnY + cancelBtnHeight};
+            cancelButtonRect = {DLG_WIDTH - cancelBtnWidth - 30, cancelBtnY,
+                               DLG_WIDTH - 30, cancelBtnY + cancelBtnHeight};
         }
         return 0;
 
@@ -328,9 +328,9 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             DeleteObject(footerBrush);
 
             // Draw cancel button in footer
-            DrawRoundedRect(memDC, &cancelButtonRect, 5, WP_WHITE, WP_WHITE);
+            DrawRoundedRect(memDC, &cancelButtonRect, 4, WP_WHITE, WP_WHITE);
             SetTextColor(memDC, WP_DARK_BLUE);
-            HFONT btnFont = CreateFontW(14, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            HFONT btnFont = CreateFontW(12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             oldFont = (HFONT)SelectObject(memDC, btnFont);
