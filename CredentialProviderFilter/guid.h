@@ -17,15 +17,15 @@
 **
 ** * * * * * * * * * * * * * * * * * * */
 
-// {34065473-D75F-4BC2-9782-E98E63ED0D41}
+// {FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D979} - Filter CLSID
 DEFINE_GUID(CLSID_CSample,
 	0xfcefdfab, 0xb0a1, 0x4c4d, 0x8b, 0x2b, 0x4f, 0xf4, 0xe0, 0xa3, 0xd9, 0x79);
 
 
-// GUID of primary Credential Provider
-// {7BAF541E-F8E0-4EDF-B69A-BD2771139E8E}
+// {11A4894C-0968-40D0-840E-FAA4B8984916} - WorldPosta Credential Provider
+// This MUST match the Provider's GUID for the Filter to allow it
 DEFINE_GUID(CLSID_COTP_LOGON,
-	0xfcefdfab, 0xb0a1, 0x4c4d, 0x8b, 0x2b, 0x4f, 0xf4, 0xe0, 0xa3, 0xd9, 0x78);
+	0x11a4894c, 0x0968, 0x40d0, 0x84, 0x0e, 0xfa, 0xa4, 0xb8, 0x98, 0x49, 0x16);
 
 
 // ADD ADDITIONAL HERE
