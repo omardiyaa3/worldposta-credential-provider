@@ -20,7 +20,7 @@ extern HINSTANCE g_hinst;
 
 // Dialog dimensions (Duo-like)
 #define DLG_WIDTH 720
-#define DLG_HEIGHT 520
+#define DLG_HEIGHT 475
 #define LEFT_PANEL_WIDTH 230
 #define FOOTER_HEIGHT 90
 #define LOGO_SIZE 150
