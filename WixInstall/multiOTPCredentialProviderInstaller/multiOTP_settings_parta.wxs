@@ -4,7 +4,7 @@
     <UI>
       <TextStyle Id="WixUI_Font_Normal_Italic" FaceName="Tahoma" Size="8" Italic="yes" />
       <Dialog Id="multiOTPSettingsa" Width="370" Height="288" Title="[ProductName] Setup" NoMinimize="yes">
-        <Control Id="LoginTitleLabel" Type="Text" X="20" Y="63" Width="350" Height="15" TabSkip="no" Text="{\WixUI_Font_Title}multiOTP Login Title"/>
+        <Control Id="LoginTitleLabel" Type="Text" X="20" Y="63" Width="350" Height="15" TabSkip="no" Text="{\WixUI_Font_Title}WorldPosta Login Title"/>
         <Control Id="LoginTitle" Type="Edit" X="20" Y="75" Width="300" Height="18" Property="MULTIOTP_LOGINTEXT" Text="{80}" />
         <Control Id="multiOTPUrlLabel" Type="Text" X="20" Y="100" Width="350" Height="15" TabSkip="no" Text="{\WixUI_Font_Title}URL of your multiOTP server(s), separated by semi-colons"/>
         <Control Id="multiOTPUrlExample" Type="Text" X="20" Y="112" Width="350" Height="15" TabSkip="no" Text="{\WixUI_Font_Normal_Italic}Example: https://192.168.1.88;http://ip.address.of.server:8112" />
@@ -34,11 +34,11 @@
         </Control>
         <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="WixUI_Bmp_Banner" />
         <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes">
-          <Text>Type the needed multiOTP server information, then click Next.</Text>
+          <Text>Type the needed server information, then click Next.</Text>
         </Control>
         <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
         <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes">
-          <Text>{\WixUI_Font_Title}multiOTP configuration</Text>
+          <Text>{\WixUI_Font_Title}WorldPosta Configuration</Text>
         </Control>
         <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
       </Dialog>

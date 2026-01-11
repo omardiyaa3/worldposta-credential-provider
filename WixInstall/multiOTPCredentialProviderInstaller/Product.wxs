@@ -9,12 +9,12 @@
     <WixVariable Id="WixUILicenseRtf" Value="..\..\ApacheLicense.rtf" />
     
     <Binary Id="ExclamIcon" SourceFile="..\..\ico\exclam.ico" />
-    <Icon Id="multiOTP.ico" SourceFile="..\..\ico\multiOTP.ico "/>
+    <Icon Id="worldposta.ico" SourceFile="..\..\ico\worldposta.ico"/>
 
     <Binary Id="SetACL64" SourceFile="..\..\tools\x64\SetACL.exe" />
     <Binary Id="SetACL32" SourceFile="..\..\tools\i386\SetACL.exe" />
-    
-    <Property Id="ARPPRODUCTICON" Value="multiOTP.ico" />
+
+    <Property Id="ARPPRODUCTICON" Value="worldposta.ico" />
 
     <Property Id="VCPP64">
       <RegistrySearch Id="VCPP64Key"
@@ -178,7 +178,7 @@
     </Property>
 
     <!-- Set default values if not found in the registry -->
-    <SetProperty Id="MULTIOTP_LOGINTEXT" After="AppSearch" Action="setLoginTextAction1" Value="multiOTP Login">
+    <SetProperty Id="MULTIOTP_LOGINTEXT" After="AppSearch" Action="setLoginTextAction1" Value="WorldPosta Login">
       <![CDATA[MULTIOTP_LOGINTITLE="" AND MULTIOTP_LOGINTEXT=""]]>
     </SetProperty>
     <SetProperty Id="MULTIOTP_LOGINTEXT" After="AppSearch" Action="setLoginTextAction2" Value="[MULTIOTP_LOGINTITLE]">

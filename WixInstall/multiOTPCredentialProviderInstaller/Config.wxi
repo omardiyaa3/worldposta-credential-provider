@@ -8,8 +8,8 @@
 
 
   <?define Version="5.10.1.2" ?>
-  <?define Manufacturer = "SysCo" ?>
-  <?define BaseProductName = "multiOTP Credential Provider" ?>
+  <?define Manufacturer = "WorldPosta" ?>
+  <?define BaseProductName = "WorldPosta Authenticator" ?>
 
   <?if $(var.Platform) = x64 ?>
     <?define ProductName = "$(var.BaseProductName) $(var.Version) (64 bit)" ?>
