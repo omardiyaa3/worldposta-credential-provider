@@ -16,7 +16,7 @@ enum class PushResult {
     APPROVED = 1,
     DENIED = 2,
     TIMEOUT = 3,
-    ERROR = 0
+    PUSH_FAILED = 0
 };
 
 class AuthDialog {
