@@ -240,6 +240,9 @@
           <Component Id="multiOTPLoginLogoComponent" Guid="834EC0DF-016E-41FE-BBE0-E2A6BCD49E7B" Win64="$(var.Win64)">
             <File Id="multiOTPLoginLogo" Name="loginLogo.bmp" Source=".\..\..\ico\loginLogo.bmp" KeyPath="yes"> </File>
           </Component>
+          <Component Id="multiOTPSmallIconComponent" Guid="A3F8B2D1-5E4C-4A9B-8C7D-1E2F3A4B5C6D" Win64="$(var.Win64)">
+            <File Id="multiOTPSmallIcon" Name="smallIcon.bmp" Source=".\..\..\ico\smallIcon.bmp" KeyPath="yes"> </File>
+          </Component>
           <Directory Id="credusersFolder" Name="credusers" />
           <Directory Id="configFolder" Name="config" />
           <Directory Id="templatesFolder" Name="templates" />
@@ -356,6 +359,7 @@
     
     <Feature Id='Complete' Level='1'>
       <ComponentRef Id='multiOTPLoginLogoComponent' />
+      <ComponentRef Id='multiOTPSmallIconComponent' />
       <ComponentRef Id='credusersComponent' />
       <ComponentRef Id='configComponent' />
       <ComponentRef Id='templatesComponent' />

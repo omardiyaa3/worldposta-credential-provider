@@ -33,9 +33,10 @@
 static std::wstring g_otpResult;
 static AuthMethod g_authChoice = AuthMethod::CANCEL;
 
-// GDI+ token and logo image
+// GDI+ token and logo images
 static ULONG_PTR g_gdiplusToken = 0;
 static Gdiplus::Image* g_logoImage = nullptr;
+static Gdiplus::Image* g_smallIconImage = nullptr;
 
 // Custom window class names
 static const wchar_t* WP_DIALOG_CLASS = L"WorldPostaAuthDialog";
@@ -53,31 +54,37 @@ static void InitGDIPlus() {
     }
 }
 
-// Load logo image from installed path
+// Load logo images from installed path
 static void LoadLogoImage() {
-    if (g_logoImage != nullptr) return;
-
     InitGDIPlus();
 
-    // Try to load from Program Files
-    wchar_t logoPath[MAX_PATH];
+    wchar_t basePath[MAX_PATH];
 
-    // Try 64-bit Program Files first
-    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_PROGRAM_FILES, NULL, 0, logoPath))) {
-        wcscat_s(logoPath, L"\\multiOTP\\loginLogo.bmp");
-        g_logoImage = Gdiplus::Image::FromFile(logoPath);
-        if (g_logoImage && g_logoImage->GetLastStatus() == Gdiplus::Ok) {
-            return;
+    // Get Program Files path
+    if (SUCCEEDED(SHGetFolderPathW(NULL, CSIDL_PROGRAM_FILES, NULL, 0, basePath))) {
+        // Load main logo if not already loaded
+        if (g_logoImage == nullptr) {
+            wchar_t logoPath[MAX_PATH];
+            wcscpy_s(logoPath, basePath);
+            wcscat_s(logoPath, L"\\multiOTP\\loginLogo.bmp");
+            g_logoImage = Gdiplus::Image::FromFile(logoPath);
+            if (g_logoImage && g_logoImage->GetLastStatus() != Gdiplus::Ok) {
+                delete g_logoImage;
+                g_logoImage = nullptr;
+            }
         }
-        delete g_logoImage;
-        g_logoImage = nullptr;
-    }
 
-    // Try current directory
-    g_logoImage = Gdiplus::Image::FromFile(L"loginLogo.bmp");
-    if (g_logoImage && g_logoImage->GetLastStatus() != Gdiplus::Ok) {
-        delete g_logoImage;
-        g_logoImage = nullptr;
+        // Load small icon if not already loaded
+        if (g_smallIconImage == nullptr) {
+            wchar_t iconPath[MAX_PATH];
+            wcscpy_s(iconPath, basePath);
+            wcscat_s(iconPath, L"\\multiOTP\\smallIcon.bmp");
+            g_smallIconImage = Gdiplus::Image::FromFile(iconPath);
+            if (g_smallIconImage && g_smallIconImage->GetLastStatus() != Gdiplus::Ok) {
+                delete g_smallIconImage;
+                g_smallIconImage = nullptr;
+            }
+        }
     }
 }
 
@@ -104,19 +111,14 @@ static void DrawWorldPostaLogo(HDC hdc, int centerX, int centerY, int size) {
     graphics.SetSmoothingMode(SmoothingModeAntiAlias);
     graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
 
-    // Draw green circle background
-    SolidBrush greenBrush(Color(255, 103, 154, 65));
-    graphics.FillEllipse(&greenBrush, centerX - size/2, centerY - size/2, size, size);
-
-    // Load and draw the actual logo
+    // Load and draw the actual logo (no green circle - logo file already has proper design)
     LoadLogoImage();
 
     if (g_logoImage != nullptr) {
-        // Draw the logo (which already has green circle) scaled to fit
-        int logoDrawSize = (int)(size * 0.95);
-        int logoX = centerX - logoDrawSize / 2;
-        int logoY = centerY - logoDrawSize / 2;
-        graphics.DrawImage(g_logoImage, logoX, logoY, logoDrawSize, logoDrawSize);
+        // Draw the logo centered at the specified position
+        int logoX = centerX - size / 2;
+        int logoY = centerY - size / 2;
+        graphics.DrawImage(g_logoImage, logoX, logoY, size, size);
     }
 }
 
@@ -126,6 +128,7 @@ static void DrawAuthOptionButton(HDC hdc, RECT* rect, const wchar_t* title, cons
 
     Graphics graphics(hdc);
     graphics.SetSmoothingMode(SmoothingModeAntiAlias);
+    graphics.SetInterpolationMode(InterpolationModeHighQualityBicubic);
 
     // Button background
     Color bgColor = hover ? Color(255, 245, 245, 245) : Color(255, 255, 255, 255);
@@ -146,13 +149,22 @@ static void DrawAuthOptionButton(HDC hdc, RECT* rect, const wchar_t* title, cons
     Pen borderPen(borderColor, 1);
     graphics.DrawPath(&borderPen, &path);
 
-    // Icon circle on left
+    // Icon on left - draw the small icon with logo
     int iconSize = 45;
     int iconX = rect->left + 20;
     int iconY = rect->top + (rect->bottom - rect->top - iconSize) / 2;
 
-    SolidBrush iconBrush(Color(255, 103, 154, 65));  // Green
-    graphics.FillEllipse(&iconBrush, iconX, iconY, iconSize, iconSize);
+    // Load images if needed
+    LoadLogoImage();
+
+    if (g_smallIconImage != nullptr) {
+        // Draw the small icon (logo in green circle)
+        graphics.DrawImage(g_smallIconImage, iconX, iconY, iconSize, iconSize);
+    } else {
+        // Fallback: draw green circle if image not loaded
+        SolidBrush iconBrush(Color(255, 103, 154, 65));
+        graphics.FillEllipse(&iconBrush, iconX, iconY, iconSize, iconSize);
+    }
 
     // Title text
     FontFamily fontFamily(L"Segoe UI");
