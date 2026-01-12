@@ -353,12 +353,13 @@ HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring
 
     // Check if this is a push authentication request
     if (sOtp == "push" || sOtp == "sms") {
-        if (DEVELOP_MODE) PrintLn(("Push authentication requested for user " + sUsername).c_str());
+        PrintLn(("=== PUSH AUTH REQUESTED for user: " + sUsername + " ===").c_str());
 
         // Send push notification
         HRESULT pushResult = sendPushNotification(username, domain);
+        PrintLn(("Push sendPushNotification result: " + std::to_string(pushResult)).c_str());
         if (FAILED(pushResult)) {
-            if (DEVELOP_MODE) PrintLn("Failed to send push notification");
+            PrintLn("PUSH FAILED: sendPushNotification returned error");
             error_code = 70;
             return PI_AUTH_FAILURE;
         }
@@ -471,7 +472,8 @@ HRESULT MultiOTP::userTokenType(const std::wstring& username, const std::wstring
 // Send push notification via WorldPosta API
 HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::wstring& domain)
 {
-    if (DEVELOP_MODE) PrintLn(L"WorldPosta::sendPushNotification for user: ", username.c_str());
+    PrintLn("=== sendPushNotification START ===");
+    PrintLn(L"User: ", username.c_str());
 
     // Read WorldPosta configuration from registry
     PWSTR endpoint = nullptr;
@@ -480,6 +482,7 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
 
     // Read endpoint (not sensitive, can be plaintext)
     DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"");
+    PrintLn(("Push: endpoint read, length=" + std::to_string(epLen)).c_str());
 
     // Try to read encrypted keys first (secure storage)
     wsIntegrationKey = SecureStorage::ReadEncryptedRegistryValue(
@@ -489,22 +492,30 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
         HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
         L"worldposta_secret_key_enc");
 
+    PrintLn(("Push: encrypted keys - ik:" + std::to_string(wsIntegrationKey.length()) +
+             " sk:" + std::to_string(wsSecretKey.length())).c_str());
+
     // Fall back to plaintext if encrypted not found (for migration)
     if (wsIntegrationKey.empty()) {
         PWSTR integrationKey = nullptr;
         if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") > 1) {
             wsIntegrationKey = integrationKey;
+            PrintLn("Push: using plaintext integration key");
         }
     }
     if (wsSecretKey.empty()) {
         PWSTR secretKey = nullptr;
         if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") > 1) {
             wsSecretKey = secretKey;
+            PrintLn("Push: using plaintext secret key");
         }
     }
 
+    PrintLn(("Push: final keys - ik:" + std::to_string(wsIntegrationKey.length()) +
+             " sk:" + std::to_string(wsSecretKey.length())).c_str());
+
     if (epLen < 2 || wsIntegrationKey.empty() || wsSecretKey.empty()) {
-        if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found");
+        PrintLn("Push: WorldPosta configuration not found - FAIL");
         return E_FAIL;
     }
 
@@ -525,19 +536,27 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
                               "\",\"serviceName\":\"Windows RDP Login\"" +
                               ",\"deviceInfo\":\"Windows Credential Provider\"}";
 
+    PrintLn(("Push: calling API /v1/push/send for user " + sUsername).c_str());
+    PrintLn(L"Push: endpoint = ", wsEndpoint.c_str());
+
     // Call WorldPosta API
     std::string response = WorldPostaApiRequest(wsEndpoint, "/v1/push/send",
                                                 requestBody, sIntegrationKey, sSecretKey);
 
+    PrintLn(("Push: API response length = " + std::to_string(response.length())).c_str());
+    if (!response.empty()) {
+        PrintLn(("Push: response = " + response).c_str());
+    }
+
     if (response.empty()) {
-        if (DEVELOP_MODE) PrintLn("WorldPosta push API returned empty response");
+        PrintLn("Push: WorldPosta API returned empty response - FAIL");
         return E_FAIL;
     }
 
     // Parse response to get requestId
     std::string requestId = GetJsonValue(response, "requestId");
     if (requestId.empty()) {
-        if (DEVELOP_MODE) PrintLn("Failed to get push requestId");
+        PrintLn("Push: Failed to get requestId from response - FAIL");
         return E_FAIL;
     }
 
@@ -545,7 +564,7 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     g_lastPushRequestId = requestId;
     g_lastPushUsername = cleanUsername;
 
-    if (DEVELOP_MODE) PrintLn(("Push notification sent, requestId: " + requestId).c_str());
+    PrintLn(("Push: SUCCESS - requestId: " + requestId).c_str());
     return S_OK;
 }
 
