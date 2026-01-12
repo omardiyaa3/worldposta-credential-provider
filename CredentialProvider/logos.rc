@@ -12,3 +12,9 @@ IDB_WP_PUSH_ICON BITMAP "pushIcon.bmp"
 
 // Passcode/OTP icon (64x64)
 IDB_WP_PASSCODE_ICON BITMAP "passcodeIcon.bmp"
+
+// Locked shield icon (128x128)
+IDB_WP_LOCKED_ICON BITMAP "lockedIcon.bmp"
+
+// Unlocked shield icon with green glow (128x128)
+IDB_WP_UNLOCKED_ICON BITMAP "unlockedIcon.bmp"
