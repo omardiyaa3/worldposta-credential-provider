@@ -934,36 +934,58 @@ HRESULT CCredential::GetSerialization(
 				{
 					ReleaseDebugPrint("User chose OTP authentication");
 
-					// Show OTP input dialog
+					// Static variables for OTP verify callback (avoid lambda capture issues)
+					static MultiOTP* s_otpPrivacyIDEA = nullptr;
+					static std::wstring s_otpUsername;
+					static std::wstring s_otpDomain;
+					static std::wstring s_otpUserSID;
+					static HRESULT s_otpStatus = E_FAIL;
+
+					s_otpPrivacyIDEA = &_privacyIDEA;
+					s_otpUsername = _config->credential.username;
+					s_otpDomain = _config->credential.domain;
+					std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
+					LPTSTR userSID = getSidFromUsername(cleanUsername);
+					s_otpUserSID = userSID ? userSID : L"";
+
+					// Set up OTP verify callback - returns true if code is valid
+					AuthDialog::SetOTPVerifyCallback([](const std::wstring& code) -> bool {
+						ReleaseDebugPrint("OTP verify callback triggered");
+						if (s_otpPrivacyIDEA) {
+							HRESULT error_code;
+							s_otpStatus = s_otpPrivacyIDEA->validateCheck(
+								s_otpUsername,
+								s_otpDomain,
+								SecureWString(code.c_str()),
+								"", error_code, s_otpUserSID);
+
+							bool valid = (s_otpStatus == PI_AUTH_SUCCESS);
+							ReleaseDebugPrint(valid ? "OTP VALID" : "OTP INVALID");
+							return valid;
+						}
+						return false;
+					});
+
+					// Show OTP input dialog (will use callback for verification)
 					std::wstring otpCode = AuthDialog::ShowOTPInputDialog(NULL);
 
-					if (!otpCode.empty())
+					// Clear callback after dialog closes
+					AuthDialog::SetOTPVerifyCallback(nullptr);
+
+					// Get the result from static variable
+					_piStatus = s_otpStatus;
+
+					if (!otpCode.empty() && _piStatus == PI_AUTH_SUCCESS)
 					{
-						// SECURITY FIX: OTP value not logged
-					ReleaseDebugPrint(L"OTP entered: [REDACTED]");
-
-						// Get clean username
-						std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
-						LPTSTR userSID = getSidFromUsername(cleanUsername);
-
-						// Verify OTP via WorldPosta API
-						HRESULT error_code;
-						_piStatus = _privacyIDEA.validateCheck(
-							_config->credential.username,
-							_config->credential.domain,
-							SecureWString(otpCode.c_str()),
-							"", error_code, (std::wstring)userSID);
-
-						if (_piStatus == PI_AUTH_SUCCESS) {
-							ReleaseDebugPrint("OTP authentication SUCCESS");
-							// Will proceed to Windows logon below
-						}
-						else {
-							ReleaseDebugPrint("OTP authentication FAILED");
-							ShowErrorMessage(_config->defaultOTPFailureText, 0);
-							*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
-							_config->isSecondStep = false; // Allow retry
-						}
+						ReleaseDebugPrint("OTP authentication SUCCESS");
+						// Will proceed to Windows logon below
+					}
+					else if (!otpCode.empty())
+					{
+						ReleaseDebugPrint("OTP authentication FAILED");
+						ShowErrorMessage(_config->defaultOTPFailureText, 0);
+						*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
+						_config->isSecondStep = false; // Allow retry
 					}
 					else
 					{
