@@ -40,6 +40,16 @@ extern HINSTANCE g_hinst;
 static std::wstring g_otpResult;
 static AuthMethod g_authChoice = AuthMethod::CANCEL;
 
+// Dialog states for the main auth dialog
+enum class DialogState {
+    CHOICE,     // Initial state - show Push/Passcode buttons
+    WAITING,    // Waiting for push approval
+    APPROVED,   // Push approved - green glow
+    DENIED      // Push denied - red glow
+};
+static DialogState g_dialogState = DialogState::CHOICE;
+static HWND g_mainDialogHwnd = NULL;
+
 // GDI+ token and logo images
 static ULONG_PTR g_gdiplusToken = 0;
 static Gdiplus::Image* g_logoImage = nullptr;
@@ -241,6 +251,9 @@ static void DrawAuthOptionButton(HDC hdc, RECT* rect, const wchar_t* title, cons
     graphics.DrawString(hover ? L"Select" : L"Select", -1, &btnFont, btnRect, &sf, &textBrush);
 }
 
+// Custom message for push result
+#define WM_PUSH_RESULT (WM_USER + 100)
+
 // Main dialog window procedure - New clean design
 static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     static int hoveredButton = 0;  // 0=none, 1=push, 2=passcode, 3=cancel
@@ -253,6 +266,10 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         {
             InitGDIPlus();
             LoadLogoImage();
+
+            // Store HWND and reset state
+            g_mainDialogHwnd = hwnd;
+            g_dialogState = DialogState::CHOICE;
 
             // Calculate button positions for new design
             int btnWidth = DLG_WIDTH - 60;
@@ -314,35 +331,64 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             RECT subtitleRect = {85, 48, DLG_WIDTH - 100, 65};
             DrawTextW(memDC, L"IDENTITY VERIFICATION", -1, &subtitleRect, DT_LEFT | DT_SINGLELINE);
 
-            // PENDING badge (top right)
+            // Status badge (top right) - changes based on state
             {
                 Gdiplus::Graphics graphics(memDC);
                 graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
-                // Badge background (rounded rectangle)
                 Gdiplus::GraphicsPath badgePath;
-                int badgeX = DLG_WIDTH - 100, badgeY = 28, badgeW = 75, badgeH = 24;
+                int badgeX = DLG_WIDTH - 105, badgeY = 28, badgeW = 80, badgeH = 24;
                 badgePath.AddArc(badgeX, badgeY, 12, 12, 180, 90);
                 badgePath.AddArc(badgeX + badgeW - 12, badgeY, 12, 12, 270, 90);
                 badgePath.AddArc(badgeX + badgeW - 12, badgeY + badgeH - 12, 12, 12, 0, 90);
                 badgePath.AddArc(badgeX, badgeY + badgeH - 12, 12, 12, 90, 90);
                 badgePath.CloseFigure();
 
-                Gdiplus::SolidBrush badgeBrush(Gdiplus::Color(255, 255, 248, 230));
+                Gdiplus::Color bgColor, dotColor, txtColor;
+                const wchar_t* badgeText = L"PENDING";
+
+                switch (g_dialogState) {
+                case DialogState::WAITING:
+                    bgColor = Gdiplus::Color(255, 255, 248, 230);
+                    dotColor = Gdiplus::Color(255, 196, 144, 68);
+                    txtColor = Gdiplus::Color(255, 196, 144, 68);
+                    badgeText = L"WAITING";
+                    break;
+                case DialogState::APPROVED:
+                    bgColor = Gdiplus::Color(255, 230, 255, 230);
+                    dotColor = Gdiplus::Color(255, 103, 154, 65);
+                    txtColor = Gdiplus::Color(255, 103, 154, 65);
+                    badgeText = L"APPROVED";
+                    badgeW = 90;
+                    break;
+                case DialogState::DENIED:
+                    bgColor = Gdiplus::Color(255, 255, 230, 230);
+                    dotColor = Gdiplus::Color(255, 200, 80, 80);
+                    txtColor = Gdiplus::Color(255, 200, 80, 80);
+                    badgeText = L"DENIED";
+                    break;
+                default: // CHOICE
+                    bgColor = Gdiplus::Color(255, 255, 248, 230);
+                    dotColor = Gdiplus::Color(255, 196, 144, 68);
+                    txtColor = Gdiplus::Color(255, 196, 144, 68);
+                    badgeText = L"PENDING";
+                    break;
+                }
+
+                Gdiplus::SolidBrush badgeBrush(bgColor);
                 graphics.FillPath(&badgeBrush, &badgePath);
 
-                // Badge dot and text
-                Gdiplus::SolidBrush orangeBrush(Gdiplus::Color(255, 196, 144, 68));
-                graphics.FillEllipse(&orangeBrush, badgeX + 10, badgeY + 8, 8, 8);
+                Gdiplus::SolidBrush dotBrush(dotColor);
+                graphics.FillEllipse(&dotBrush, badgeX + 10, badgeY + 8, 8, 8);
 
                 Gdiplus::FontFamily fontFamily(L"Segoe UI");
                 Gdiplus::Font badgeFont(&fontFamily, 9, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-                Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 196, 144, 68));
-                graphics.DrawString(L"PENDING", -1, &badgeFont, Gdiplus::PointF((float)badgeX + 22, (float)badgeY + 5), &textBrush);
+                Gdiplus::SolidBrush textBrush(txtColor);
+                graphics.DrawString(badgeText, -1, &badgeFont, Gdiplus::PointF((float)badgeX + 22, (float)badgeY + 5), &textBrush);
             }
 
             // ===== LOCK ICON SECTION =====
-            // White circle with shadow effect and drawn shield icon
+            // White circle with shadow/glow effect based on state
             {
                 Gdiplus::Graphics graphics(memDC);
                 graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
@@ -351,100 +397,185 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 int circleY = 175;
                 int circleRadius = 75;
 
-                // Shadow (multiple layers for softer effect)
-                for (int i = 3; i >= 0; i--) {
-                    int shadowOffset = 4 + i * 2;
-                    int alpha = 8 + i * 5;
-                    Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(alpha, 0, 0, 0));
-                    graphics.FillEllipse(&shadowBrush, circleX - circleRadius + shadowOffset,
-                                        circleY - circleRadius + shadowOffset,
-                                        circleRadius * 2, circleRadius * 2);
+                // Glow/Shadow based on state
+                if (g_dialogState == DialogState::APPROVED) {
+                    // Green glow for approved
+                    for (int i = 5; i >= 0; i--) {
+                        int glowRadius = circleRadius + 8 + i * 5;
+                        int alpha = 35 - i * 5;
+                        Gdiplus::SolidBrush glowBrush(Gdiplus::Color(alpha, 103, 154, 65));
+                        graphics.FillEllipse(&glowBrush, circleX - glowRadius, circleY - glowRadius, glowRadius * 2, glowRadius * 2);
+                    }
+                } else if (g_dialogState == DialogState::DENIED) {
+                    // Red glow for denied
+                    for (int i = 5; i >= 0; i--) {
+                        int glowRadius = circleRadius + 8 + i * 5;
+                        int alpha = 35 - i * 5;
+                        Gdiplus::SolidBrush glowBrush(Gdiplus::Color(alpha, 200, 80, 80));
+                        graphics.FillEllipse(&glowBrush, circleX - glowRadius, circleY - glowRadius, glowRadius * 2, glowRadius * 2);
+                    }
+                } else {
+                    // Normal shadow
+                    for (int i = 3; i >= 0; i--) {
+                        int shadowOffset = 4 + i * 2;
+                        int alpha = 8 + i * 5;
+                        Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(alpha, 0, 0, 0));
+                        graphics.FillEllipse(&shadowBrush, circleX - circleRadius + shadowOffset,
+                                            circleY - circleRadius + shadowOffset,
+                                            circleRadius * 2, circleRadius * 2);
+                    }
                 }
 
-                // White circle
+                // White circle with colored border for approved/denied
                 Gdiplus::SolidBrush whiteBrush(Gdiplus::Color(255, 255, 255, 255));
                 graphics.FillEllipse(&whiteBrush, circleX - circleRadius, circleY - circleRadius, circleRadius * 2, circleRadius * 2);
 
-                // Draw shield outline icon
+                if (g_dialogState == DialogState::APPROVED) {
+                    Gdiplus::Pen borderPen(Gdiplus::Color(255, 103, 154, 65), 3);
+                    graphics.DrawEllipse(&borderPen, circleX - circleRadius, circleY - circleRadius, circleRadius * 2, circleRadius * 2);
+                } else if (g_dialogState == DialogState::DENIED) {
+                    Gdiplus::Pen borderPen(Gdiplus::Color(255, 200, 80, 80), 3);
+                    graphics.DrawEllipse(&borderPen, circleX - circleRadius, circleY - circleRadius, circleRadius * 2, circleRadius * 2);
+                }
+
+                // Draw shield icon - different based on state
                 {
                     int shieldCX = circleX;
                     int shieldCY = circleY - 5;
                     int shieldW = 50;
                     int shieldH = 58;
 
-                    // Create shield path (outline style like the design)
+                    // Shield path
                     Gdiplus::GraphicsPath shieldPath;
-
-                    // Shield shape: rounded top, pointed bottom
                     shieldPath.StartFigure();
                     shieldPath.AddLine(shieldCX - shieldW/2, shieldCY - shieldH/2 + 8, shieldCX - shieldW/2, shieldCY + 5);
-                    shieldPath.AddBezier(
-                        shieldCX - shieldW/2, shieldCY + 5,
-                        shieldCX - shieldW/2, shieldCY + shieldH/2 - 10,
-                        shieldCX, shieldCY + shieldH/2,
-                        shieldCX, shieldCY + shieldH/2
-                    );
-                    shieldPath.AddBezier(
-                        shieldCX, shieldCY + shieldH/2,
-                        shieldCX, shieldCY + shieldH/2,
-                        shieldCX + shieldW/2, shieldCY + shieldH/2 - 10,
-                        shieldCX + shieldW/2, shieldCY + 5
-                    );
+                    shieldPath.AddBezier(shieldCX - shieldW/2, shieldCY + 5, shieldCX - shieldW/2, shieldCY + shieldH/2 - 10,
+                                        shieldCX, shieldCY + shieldH/2, shieldCX, shieldCY + shieldH/2);
+                    shieldPath.AddBezier(shieldCX, shieldCY + shieldH/2, shieldCX, shieldCY + shieldH/2,
+                                        shieldCX + shieldW/2, shieldCY + shieldH/2 - 10, shieldCX + shieldW/2, shieldCY + 5);
                     shieldPath.AddLine(shieldCX + shieldW/2, shieldCY + 5, shieldCX + shieldW/2, shieldCY - shieldH/2 + 8);
-                    // Rounded top
                     shieldPath.AddArc(shieldCX - shieldW/2, shieldCY - shieldH/2, 16, 16, 180, 90);
                     shieldPath.AddLine(shieldCX - shieldW/2 + 8, shieldCY - shieldH/2, shieldCX + shieldW/2 - 8, shieldCY - shieldH/2);
                     shieldPath.AddArc(shieldCX + shieldW/2 - 16, shieldCY - shieldH/2, 16, 16, 270, 90);
                     shieldPath.CloseFigure();
 
-                    // Draw shield outline (dark blue/gray)
-                    Gdiplus::Pen shieldPen(Gdiplus::Color(255, 140, 150, 160), 2.5f);
+                    Gdiplus::Color shieldColor;
+                    if (g_dialogState == DialogState::APPROVED) {
+                        shieldColor = Gdiplus::Color(255, 103, 154, 65);
+                    } else if (g_dialogState == DialogState::DENIED) {
+                        shieldColor = Gdiplus::Color(255, 200, 80, 80);
+                    } else {
+                        shieldColor = Gdiplus::Color(255, 140, 150, 160);
+                    }
+
+                    Gdiplus::Pen shieldPen(shieldColor, 2.5f);
                     graphics.DrawPath(&shieldPen, &shieldPath);
 
-                    // Draw exclamation mark inside shield
-                    Gdiplus::Pen exclPen(Gdiplus::Color(255, 140, 150, 160), 3.0f);
-                    exclPen.SetStartCap(Gdiplus::LineCapRound);
-                    exclPen.SetEndCap(Gdiplus::LineCapRound);
-
-                    // Exclamation line
-                    graphics.DrawLine(&exclPen, shieldCX, shieldCY - 12, shieldCX, shieldCY + 8);
-
-                    // Exclamation dot
-                    Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 140, 150, 160));
-                    graphics.FillEllipse(&dotBrush, shieldCX - 3, shieldCY + 14, 6, 6);
+                    // Draw icon inside shield based on state
+                    if (g_dialogState == DialogState::APPROVED) {
+                        // Checkmark for approved
+                        Gdiplus::Pen checkPen(shieldColor, 3.5f);
+                        checkPen.SetStartCap(Gdiplus::LineCapRound);
+                        checkPen.SetEndCap(Gdiplus::LineCapRound);
+                        checkPen.SetLineJoin(Gdiplus::LineJoinRound);
+                        graphics.DrawLine(&checkPen, shieldCX - 12, shieldCY, shieldCX - 3, shieldCY + 10);
+                        graphics.DrawLine(&checkPen, shieldCX - 3, shieldCY + 10, shieldCX + 14, shieldCY - 8);
+                    } else if (g_dialogState == DialogState::DENIED) {
+                        // X for denied
+                        Gdiplus::Pen xPen(shieldColor, 3.5f);
+                        xPen.SetStartCap(Gdiplus::LineCapRound);
+                        xPen.SetEndCap(Gdiplus::LineCapRound);
+                        graphics.DrawLine(&xPen, shieldCX - 10, shieldCY - 10, shieldCX + 10, shieldCY + 10);
+                        graphics.DrawLine(&xPen, shieldCX + 10, shieldCY - 10, shieldCX - 10, shieldCY + 10);
+                    } else {
+                        // Exclamation mark for pending/waiting
+                        Gdiplus::Pen exclPen(shieldColor, 3.0f);
+                        exclPen.SetStartCap(Gdiplus::LineCapRound);
+                        exclPen.SetEndCap(Gdiplus::LineCapRound);
+                        graphics.DrawLine(&exclPen, shieldCX, shieldCY - 12, shieldCX, shieldCY + 8);
+                        Gdiplus::SolidBrush dotBrush(shieldColor);
+                        graphics.FillEllipse(&dotBrush, shieldCX - 3, shieldCY + 14, 6, 6);
+                    }
                 }
             }
 
-            // "LOCKED" text below the circle
+            // Status text below the circle - changes based on state
             HFONT lockedFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             SelectObject(memDC, lockedFont);
-            SetTextColor(memDC, RGB(180, 180, 180));
-            RECT lockedRect = {0, 258, DLG_WIDTH, 278};
-            DrawTextW(memDC, L"L O C K E D", -1, &lockedRect, DT_CENTER | DT_SINGLELINE);
 
-            // ===== CONTENT SECTION =====
-            // "Authorize Session" title
+            const wchar_t* statusText = L"L O C K E D";
+            COLORREF statusColor = RGB(180, 180, 180);
+
+            switch (g_dialogState) {
+            case DialogState::WAITING:
+                statusText = L"W A I T I N G";
+                statusColor = RGB(196, 144, 68);
+                break;
+            case DialogState::APPROVED:
+                statusText = L"A C C E S S   G R A N T E D";
+                statusColor = RGB(103, 154, 65);
+                break;
+            case DialogState::DENIED:
+                statusText = L"A C C E S S   D E N I E D";
+                statusColor = RGB(200, 80, 80);
+                break;
+            default:
+                statusText = L"L O C K E D";
+                statusColor = RGB(180, 180, 180);
+                break;
+            }
+
+            SetTextColor(memDC, statusColor);
+            RECT lockedRect = {0, 258, DLG_WIDTH, 278};
+            DrawTextW(memDC, statusText, -1, &lockedRect, DT_CENTER | DT_SINGLELINE);
+
+            // ===== CONTENT SECTION ===== (changes based on state)
             HFONT authTitleFont = CreateFontW(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             SelectObject(memDC, authTitleFont);
-            SetTextColor(memDC, WP_DARK_BLUE);
-            RECT authTitleRect = {0, 285, DLG_WIDTH, 315};
-            DrawTextW(memDC, L"Authorize Session", -1, &authTitleRect, DT_CENTER | DT_SINGLELINE);
 
-            // Subtitle
             HFONT descFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+
+            const wchar_t* titleText = L"Authorize Session";
+            const wchar_t* descText = L"To continue, please confirm this sign-in\nrequest on your mobile device.";
+            COLORREF titleColor = WP_DARK_BLUE;
+
+            switch (g_dialogState) {
+            case DialogState::WAITING:
+                titleText = L"Waiting for Approval";
+                descText = L"Please check your mobile device and approve\nthe authentication request.";
+                titleColor = WP_DARK_BLUE;
+                break;
+            case DialogState::APPROVED:
+                titleText = L"Authentication Successful";
+                descText = L"Your identity has been verified.\nYou will be signed in shortly.";
+                titleColor = RGB(103, 154, 65);
+                break;
+            case DialogState::DENIED:
+                titleText = L"Authentication Failed";
+                descText = L"The request was denied or timed out.\nPlease try again.";
+                titleColor = RGB(200, 80, 80);
+                break;
+            default:
+                break;
+            }
+
+            SetTextColor(memDC, titleColor);
+            RECT authTitleRect = {0, 290, DLG_WIDTH, 320};
+            DrawTextW(memDC, titleText, -1, &authTitleRect, DT_CENTER | DT_SINGLELINE);
+
             SelectObject(memDC, descFont);
             SetTextColor(memDC, WP_TEXT_GRAY);
-            RECT descRect = {30, 320, DLG_WIDTH - 30, 365};
-            DrawTextW(memDC, L"To continue, please confirm this sign-in\nrequest on your mobile device.", -1, &descRect, DT_CENTER);
+            RECT descRect = {30, 325, DLG_WIDTH - 30, 370};
+            DrawTextW(memDC, descText, -1, &descRect, DT_CENTER);
 
-            // ===== BUTTONS =====
-            {
+            // ===== BUTTONS ===== (only show in CHOICE state)
+            if (g_dialogState == DialogState::CHOICE) {
                 Gdiplus::Graphics graphics(memDC);
                 graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
@@ -466,7 +597,6 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                     int iconX = pushButtonRect.left + 55;
                     int iconY = (pushButtonRect.top + pushButtonRect.bottom) / 2;
 
-                    // Phone outline
                     Gdiplus::GraphicsPath phonePath;
                     phonePath.AddArc(iconX - 8, iconY - 12, 4, 4, 180, 90);
                     phonePath.AddArc(iconX + 4, iconY - 12, 4, 4, 270, 90);
@@ -476,16 +606,11 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 
                     Gdiplus::Pen phonePen(Gdiplus::Color(255, 255, 255, 255), 1.5f);
                     graphics.DrawPath(&phonePen, &phonePath);
-
-                    // Screen line
                     graphics.DrawLine(&phonePen, iconX - 4, iconY - 7, iconX + 4, iconY - 7);
-
-                    // Home button dot
                     Gdiplus::SolidBrush whiteBrush2(Gdiplus::Color(255, 255, 255, 255));
                     graphics.FillEllipse(&whiteBrush2, iconX - 2, iconY + 5, 4, 4);
                 }
 
-                // Push button text
                 Gdiplus::FontFamily fontFamily(L"Segoe UI");
                 Gdiplus::Font btnFont(&fontFamily, 14, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
                 Gdiplus::SolidBrush whiteBrush(Gdiplus::Color(255, 255, 255, 255));
@@ -511,62 +636,72 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 Gdiplus::Pen borderPen(Gdiplus::Color(255, 220, 220, 220), 1);
                 graphics.DrawPath(&borderPen, &passcodePath);
 
-                // Draw key icon on passcode button
+                // Draw key icon
                 {
                     int iconX = passcodeButtonRect.left + 55;
                     int iconY = (passcodeButtonRect.top + passcodeButtonRect.bottom) / 2;
-
                     Gdiplus::Pen keyPen(Gdiplus::Color(255, 100, 100, 100), 1.8f);
                     keyPen.SetStartCap(Gdiplus::LineCapRound);
                     keyPen.SetEndCap(Gdiplus::LineCapRound);
-
-                    // Key head (circle)
                     graphics.DrawEllipse(&keyPen, iconX - 10, iconY - 7, 10, 10);
-
-                    // Key shaft
                     graphics.DrawLine(&keyPen, iconX - 2, iconY - 2, iconX + 8, iconY + 8);
-
-                    // Key teeth
                     graphics.DrawLine(&keyPen, iconX + 4, iconY + 4, iconX + 4, iconY + 7);
                     graphics.DrawLine(&keyPen, iconX + 7, iconY + 7, iconX + 7, iconY + 10);
                 }
 
-                // Passcode button text
                 Gdiplus::SolidBrush darkBrush(Gdiplus::Color(255, 80, 80, 80));
                 Gdiplus::RectF passcodeRectF((float)passcodeButtonRect.left + 25, (float)passcodeButtonRect.top,
                                              (float)(passcodeButtonRect.right - passcodeButtonRect.left) - 25,
                                              (float)(passcodeButtonRect.bottom - passcodeButtonRect.top));
                 graphics.DrawString(L"Passcode", -1, &btnFont, passcodeRectF, &sf, &darkBrush);
-            }
 
-            // Cancel link with X icon
-            {
-                Gdiplus::Graphics graphics(memDC);
-                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-
+                // Cancel link
                 int cancelCX = DLG_WIDTH / 2;
                 int cancelCY = cancelLinkRect.top + 8;
-
-                // Draw circle with X
                 Gdiplus::Color cancelColor = hoveredButton == 3 ? Gdiplus::Color(255, 80, 80, 80) : Gdiplus::Color(255, 150, 150, 150);
                 Gdiplus::Pen circlePen(cancelColor, 1.2f);
                 graphics.DrawEllipse(&circlePen, cancelCX - 55, cancelCY - 6, 12, 12);
-
-                // X inside circle
                 graphics.DrawLine(&circlePen, cancelCX - 52, cancelCY - 3, cancelCX - 46, cancelCY + 3);
                 graphics.DrawLine(&circlePen, cancelCX - 46, cancelCY - 3, cancelCX - 52, cancelCY + 3);
 
-                // Text
-                Gdiplus::FontFamily fontFamily(L"Segoe UI");
                 Gdiplus::Font cancelFontGdi(&fontFamily, 11, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
                 Gdiplus::SolidBrush cancelBrush(cancelColor);
-                Gdiplus::StringFormat sf;
-                sf.SetAlignment(Gdiplus::StringAlignmentCenter);
-                sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
                 Gdiplus::RectF cancelRectF((float)cancelLinkRect.left + 15, (float)cancelLinkRect.top,
                                            (float)(cancelLinkRect.right - cancelLinkRect.left),
                                            (float)(cancelLinkRect.bottom - cancelLinkRect.top));
                 graphics.DrawString(L"CANCEL REQUEST", -1, &cancelFontGdi, cancelRectF, &sf, &cancelBrush);
+            }
+            // Show loading animation in WAITING state
+            else if (g_dialogState == DialogState::WAITING) {
+                Gdiplus::Graphics graphics(memDC);
+                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+                // Loading dots
+                int dotY = 420;
+                int dotRadius = 6;
+                int dotSpacing = 25;
+                int startX = DLG_WIDTH / 2 - dotSpacing;
+
+                Gdiplus::SolidBrush dot1(Gdiplus::Color(255, 103, 154, 65));
+                Gdiplus::SolidBrush dot2(Gdiplus::Color(150, 103, 154, 65));
+                Gdiplus::SolidBrush dot3(Gdiplus::Color(80, 103, 154, 65));
+
+                graphics.FillEllipse(&dot1, startX - dotRadius, dotY - dotRadius, dotRadius * 2, dotRadius * 2);
+                graphics.FillEllipse(&dot2, startX + dotSpacing - dotRadius, dotY - dotRadius, dotRadius * 2, dotRadius * 2);
+                graphics.FillEllipse(&dot3, startX + dotSpacing * 2 - dotRadius, dotY - dotRadius, dotRadius * 2, dotRadius * 2);
+
+                // Cancel link during waiting
+                Gdiplus::FontFamily fontFamily(L"Segoe UI");
+                Gdiplus::Font cancelFontGdi(&fontFamily, 11, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+                Gdiplus::Color cancelColor = hoveredButton == 3 ? Gdiplus::Color(255, 80, 80, 80) : Gdiplus::Color(255, 150, 150, 150);
+                Gdiplus::SolidBrush cancelBrush(cancelColor);
+                Gdiplus::StringFormat sf;
+                sf.SetAlignment(Gdiplus::StringAlignmentCenter);
+                sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+                Gdiplus::RectF cancelRectF((float)cancelLinkRect.left, (float)cancelLinkRect.top,
+                                           (float)(cancelLinkRect.right - cancelLinkRect.left),
+                                           (float)(cancelLinkRect.bottom - cancelLinkRect.top));
+                graphics.DrawString(L"Cancel", -1, &cancelFontGdi, cancelRectF, &sf, &cancelBrush);
             }
 
             // ===== FOOTER =====
@@ -638,16 +773,63 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             int y = GET_Y_LPARAM(lParam);
             POINT pt = {x, y};
 
-            if (PtInRect(&pushButtonRect, pt)) {
-                g_authChoice = AuthMethod::PUSH;
-                DestroyWindow(hwnd);
-            } else if (PtInRect(&passcodeButtonRect, pt)) {
-                g_authChoice = AuthMethod::OTP;
-                DestroyWindow(hwnd);
-            } else if (PtInRect(&cancelLinkRect, pt)) {
-                g_authChoice = AuthMethod::CANCEL;
+            if (g_dialogState == DialogState::CHOICE) {
+                if (PtInRect(&pushButtonRect, pt)) {
+                    // Change to waiting state instead of closing
+                    g_dialogState = DialogState::WAITING;
+                    InvalidateRect(hwnd, NULL, FALSE);
+                    // Signal that push was selected (parent will handle actual push)
+                    g_authChoice = AuthMethod::PUSH;
+                    // Post message to indicate push was clicked
+                    PostMessage(hwnd, WM_PUSH_RESULT, 0, 0);  // 0 = start push
+                } else if (PtInRect(&passcodeButtonRect, pt)) {
+                    g_authChoice = AuthMethod::OTP;
+                    DestroyWindow(hwnd);
+                } else if (PtInRect(&cancelLinkRect, pt)) {
+                    g_authChoice = AuthMethod::CANCEL;
+                    DestroyWindow(hwnd);
+                }
+            } else if (g_dialogState == DialogState::WAITING) {
+                if (PtInRect(&cancelLinkRect, pt)) {
+                    g_authChoice = AuthMethod::CANCEL;
+                    g_dialogState = DialogState::CHOICE;
+                    DestroyWindow(hwnd);
+                }
+            } else if (g_dialogState == DialogState::APPROVED || g_dialogState == DialogState::DENIED) {
+                // Click anywhere to close after result shown
                 DestroyWindow(hwnd);
             }
+        }
+        return 0;
+
+    case WM_PUSH_RESULT:
+        {
+            // wParam: 0 = start push, 1 = approved, 2 = denied/timeout
+            if (wParam == 0) {
+                // Push started - we're already in WAITING state
+                // The parent ShowAuthDialog will handle the actual push and call back
+            } else if (wParam == 1) {
+                // Approved
+                g_dialogState = DialogState::APPROVED;
+                g_authChoice = AuthMethod::PUSH;
+                InvalidateRect(hwnd, NULL, FALSE);
+                // Close after 1.5 seconds
+                SetTimer(hwnd, 1, 1500, NULL);
+            } else {
+                // Denied or timeout
+                g_dialogState = DialogState::DENIED;
+                g_authChoice = AuthMethod::CANCEL;
+                InvalidateRect(hwnd, NULL, FALSE);
+                // Close after 2 seconds
+                SetTimer(hwnd, 1, 2000, NULL);
+            }
+        }
+        return 0;
+
+    case WM_TIMER:
+        if (wParam == 1) {
+            KillTimer(hwnd, 1);
+            DestroyWindow(hwnd);
         }
         return 0;
 
@@ -664,11 +846,24 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         return 0;
 
     case WM_DESTROY:
+        g_mainDialogHwnd = NULL;
         PostQuitMessage(0);
         return 0;
     }
 
     return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
+// Helper function to send push result to the dialog
+void AuthDialog::NotifyPushResult(bool approved) {
+    if (g_mainDialogHwnd && IsWindow(g_mainDialogHwnd)) {
+        PostMessage(g_mainDialogHwnd, WM_PUSH_RESULT, approved ? 1 : 2, 0);
+    }
+}
+
+// Check if dialog is in waiting state
+bool AuthDialog::IsWaitingForPush() {
+    return g_dialogState == DialogState::WAITING && g_mainDialogHwnd != NULL;
 }
 
 // Register window class

@@ -38,4 +38,10 @@ public:
 
     // Show push result dialog
     static void ShowPushResultDialog(HWND parent, PushResult result);
+
+    // Notify the dialog of push result (called from push polling thread)
+    static void NotifyPushResult(bool approved);
+
+    // Check if dialog is waiting for push
+    static bool IsWaitingForPush();
 };
