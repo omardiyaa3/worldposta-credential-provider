@@ -870,29 +870,49 @@ HRESULT CCredential::GetSerialization(
 				_config->isSecondStep = true;
 				_config->clearFields = false;
 
+				// Store pointers for push callback (static to avoid lambda capture issues)
+				static MultiOTP* s_privacyIDEA = nullptr;
+				static std::wstring s_username;
+				static std::wstring s_domain;
+				static std::wstring s_userSID;
+				static HRESULT s_piStatus = E_FAIL;
+
+				s_privacyIDEA = &_privacyIDEA;
+				s_username = _config->credential.username;
+				s_domain = _config->credential.domain;
+				std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
+				LPTSTR userSID = getSidFromUsername(cleanUsername);
+				s_userSID = userSID ? userSID : L"";
+
+				// Set up push callback - will be called when user clicks Push button
+				AuthDialog::SetPushCallback([]() {
+					ReleaseDebugPrint("Push callback triggered - sending push notification");
+					if (s_privacyIDEA) {
+						HRESULT error_code;
+						s_piStatus = s_privacyIDEA->validateCheck(
+							s_username,
+							s_domain,
+							SecureWString(L"push"),
+							"", error_code, s_userSID);
+
+						// Notify dialog of result
+						bool approved = (s_piStatus == PI_AUTH_SUCCESS);
+						ReleaseDebugPrint(approved ? "Push APPROVED" : "Push DENIED/TIMEOUT");
+						AuthDialog::NotifyPushResult(approved);
+					}
+				});
+
 				AuthMethod choice = AuthDialog::ShowAuthChoiceDialog(NULL);
+
+				// Clear callback after dialog closes
+				AuthDialog::SetPushCallback(nullptr);
 
 				if (choice == AuthMethod::PUSH)
 				{
 					ReleaseDebugPrint("User chose PUSH authentication");
 
-					// Show waiting dialog
-					HWND waitDlg = AuthDialog::ShowPushWaitingDialog(NULL);
-
-					// Get clean username
-					std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
-					LPTSTR userSID = getSidFromUsername(cleanUsername);
-
-					// Send push notification via WorldPosta API
-					HRESULT error_code;
-					_piStatus = _privacyIDEA.validateCheck(
-						_config->credential.username,
-						_config->credential.domain,
-						SecureWString(L"push"),
-						"", error_code, (std::wstring)userSID);
-
-					// Close waiting dialog
-					AuthDialog::ClosePushWaitingDialog(waitDlg);
+					// Get the result from the static variable (set by callback)
+					_piStatus = s_piStatus;
 
 					if (_piStatus == PI_AUTH_SUCCESS) {
 						ReleaseDebugPrint("Push authentication SUCCESS");
@@ -901,7 +921,6 @@ HRESULT CCredential::GetSerialization(
 					}
 					else {
 						ReleaseDebugPrint("Push authentication FAILED or TIMEOUT");
-						// Use credential provider status message instead of popup (popups don't work on secure desktop)
 						if (_piStatus == PI_AUTH_FAILURE) {
 							ShowErrorMessage(L"Push notification was denied", 0);
 						} else {
