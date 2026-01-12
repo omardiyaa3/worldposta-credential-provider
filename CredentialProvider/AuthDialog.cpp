@@ -1483,7 +1483,7 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
         {
             // wParam: 0 = start verify, 1 = success, 2 = failure
             if (wParam == 0) {
-                // Start verification - call the OTP callback
+                // Start verification - call the OTP callback if set
                 if (g_otpVerifyCallback) {
                     std::wstring codeToVerify = enteredCode;
                     std::thread([hwnd, codeToVerify]() {
@@ -1493,11 +1493,10 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
                         }
                     }).detach();
                 } else {
-                    // No callback set - just accept the code for now
+                    // No callback set - return the code immediately for external verification
+                    // Don't show success/failure states - let the caller handle that
                     g_otpResult = enteredCode;
-                    g_otpDialogState = OTPDialogState::SUCCESS;
-                    InvalidateRect(hwnd, NULL, FALSE);
-                    SetTimer(hwnd, 2, 1500, NULL);
+                    DestroyWindow(hwnd);
                 }
             } else if (wParam == 1) {
                 // OTP verified successfully
