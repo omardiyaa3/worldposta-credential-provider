@@ -342,38 +342,87 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             }
 
             // ===== LOCK ICON SECTION =====
-            // White circle with shadow effect
+            // White circle with shadow effect and drawn shield icon
             {
                 Gdiplus::Graphics graphics(memDC);
                 graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
                 int circleX = DLG_WIDTH / 2;
-                int circleY = 170;
-                int circleRadius = 70;
+                int circleY = 175;
+                int circleRadius = 75;
 
-                // Shadow (slightly offset, lighter)
-                Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(30, 0, 0, 0));
-                graphics.FillEllipse(&shadowBrush, circleX - circleRadius + 3, circleY - circleRadius + 3, circleRadius * 2, circleRadius * 2);
+                // Shadow (multiple layers for softer effect)
+                for (int i = 3; i >= 0; i--) {
+                    int shadowOffset = 4 + i * 2;
+                    int alpha = 8 + i * 5;
+                    Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(alpha, 0, 0, 0));
+                    graphics.FillEllipse(&shadowBrush, circleX - circleRadius + shadowOffset,
+                                        circleY - circleRadius + shadowOffset,
+                                        circleRadius * 2, circleRadius * 2);
+                }
 
                 // White circle
                 Gdiplus::SolidBrush whiteBrush(Gdiplus::Color(255, 255, 255, 255));
                 graphics.FillEllipse(&whiteBrush, circleX - circleRadius, circleY - circleRadius, circleRadius * 2, circleRadius * 2);
 
-                // Draw locked icon inside circle
-                if (g_lockedIconImage != nullptr) {
-                    int iconSize = 70;
-                    graphics.DrawImage(g_lockedIconImage, circleX - iconSize/2, circleY - iconSize/2 - 5, iconSize, iconSize);
+                // Draw shield outline icon
+                {
+                    int shieldCX = circleX;
+                    int shieldCY = circleY - 5;
+                    int shieldW = 50;
+                    int shieldH = 58;
+
+                    // Create shield path (outline style like the design)
+                    Gdiplus::GraphicsPath shieldPath;
+
+                    // Shield shape: rounded top, pointed bottom
+                    shieldPath.StartFigure();
+                    shieldPath.AddLine(shieldCX - shieldW/2, shieldCY - shieldH/2 + 8, shieldCX - shieldW/2, shieldCY + 5);
+                    shieldPath.AddBezier(
+                        shieldCX - shieldW/2, shieldCY + 5,
+                        shieldCX - shieldW/2, shieldCY + shieldH/2 - 10,
+                        shieldCX, shieldCY + shieldH/2,
+                        shieldCX, shieldCY + shieldH/2
+                    );
+                    shieldPath.AddBezier(
+                        shieldCX, shieldCY + shieldH/2,
+                        shieldCX, shieldCY + shieldH/2,
+                        shieldCX + shieldW/2, shieldCY + shieldH/2 - 10,
+                        shieldCX + shieldW/2, shieldCY + 5
+                    );
+                    shieldPath.AddLine(shieldCX + shieldW/2, shieldCY + 5, shieldCX + shieldW/2, shieldCY - shieldH/2 + 8);
+                    // Rounded top
+                    shieldPath.AddArc(shieldCX - shieldW/2, shieldCY - shieldH/2, 16, 16, 180, 90);
+                    shieldPath.AddLine(shieldCX - shieldW/2 + 8, shieldCY - shieldH/2, shieldCX + shieldW/2 - 8, shieldCY - shieldH/2);
+                    shieldPath.AddArc(shieldCX + shieldW/2 - 16, shieldCY - shieldH/2, 16, 16, 270, 90);
+                    shieldPath.CloseFigure();
+
+                    // Draw shield outline (dark blue/gray)
+                    Gdiplus::Pen shieldPen(Gdiplus::Color(255, 140, 150, 160), 2.5f);
+                    graphics.DrawPath(&shieldPen, &shieldPath);
+
+                    // Draw exclamation mark inside shield
+                    Gdiplus::Pen exclPen(Gdiplus::Color(255, 140, 150, 160), 3.0f);
+                    exclPen.SetStartCap(Gdiplus::LineCapRound);
+                    exclPen.SetEndCap(Gdiplus::LineCapRound);
+
+                    // Exclamation line
+                    graphics.DrawLine(&exclPen, shieldCX, shieldCY - 12, shieldCX, shieldCY + 8);
+
+                    // Exclamation dot
+                    Gdiplus::SolidBrush dotBrush(Gdiplus::Color(255, 140, 150, 160));
+                    graphics.FillEllipse(&dotBrush, shieldCX - 3, shieldCY + 14, 6, 6);
                 }
             }
 
             // "LOCKED" text below the circle
-            HFONT lockedFont = CreateFontW(12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            HFONT lockedFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             SelectObject(memDC, lockedFont);
-            SetTextColor(memDC, WP_TEXT_GRAY);
-            RECT lockedRect = {0, 245, DLG_WIDTH, 265};
-            DrawTextW(memDC, L"LOCKED", -1, &lockedRect, DT_CENTER | DT_SINGLELINE);
+            SetTextColor(memDC, RGB(180, 180, 180));
+            RECT lockedRect = {0, 258, DLG_WIDTH, 278};
+            DrawTextW(memDC, L"L O C K E D", -1, &lockedRect, DT_CENTER | DT_SINGLELINE);
 
             // ===== CONTENT SECTION =====
             // "Authorize Session" title
@@ -412,17 +461,41 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 Gdiplus::SolidBrush pushBrush(pushColor);
                 graphics.FillPath(&pushBrush, &pushPath);
 
-                // Push button icon and text
+                // Draw phone icon on push button
+                {
+                    int iconX = pushButtonRect.left + 55;
+                    int iconY = (pushButtonRect.top + pushButtonRect.bottom) / 2;
+
+                    // Phone outline
+                    Gdiplus::GraphicsPath phonePath;
+                    phonePath.AddArc(iconX - 8, iconY - 12, 4, 4, 180, 90);
+                    phonePath.AddArc(iconX + 4, iconY - 12, 4, 4, 270, 90);
+                    phonePath.AddArc(iconX + 4, iconY + 8, 4, 4, 0, 90);
+                    phonePath.AddArc(iconX - 8, iconY + 8, 4, 4, 90, 90);
+                    phonePath.CloseFigure();
+
+                    Gdiplus::Pen phonePen(Gdiplus::Color(255, 255, 255, 255), 1.5f);
+                    graphics.DrawPath(&phonePen, &phonePath);
+
+                    // Screen line
+                    graphics.DrawLine(&phonePen, iconX - 4, iconY - 7, iconX + 4, iconY - 7);
+
+                    // Home button dot
+                    Gdiplus::SolidBrush whiteBrush2(Gdiplus::Color(255, 255, 255, 255));
+                    graphics.FillEllipse(&whiteBrush2, iconX - 2, iconY + 5, 4, 4);
+                }
+
+                // Push button text
                 Gdiplus::FontFamily fontFamily(L"Segoe UI");
                 Gdiplus::Font btnFont(&fontFamily, 14, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
                 Gdiplus::SolidBrush whiteBrush(Gdiplus::Color(255, 255, 255, 255));
                 Gdiplus::StringFormat sf;
                 sf.SetAlignment(Gdiplus::StringAlignmentCenter);
                 sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-                Gdiplus::RectF pushRectF((float)pushButtonRect.left, (float)pushButtonRect.top,
-                                         (float)(pushButtonRect.right - pushButtonRect.left),
+                Gdiplus::RectF pushRectF((float)pushButtonRect.left + 25, (float)pushButtonRect.top,
+                                         (float)(pushButtonRect.right - pushButtonRect.left) - 25,
                                          (float)(pushButtonRect.bottom - pushButtonRect.top));
-                graphics.DrawString(L"\u25A1  Push to my device", -1, &btnFont, pushRectF, &sf, &whiteBrush);
+                graphics.DrawString(L"Push to my device", -1, &btnFont, pushRectF, &sf, &whiteBrush);
 
                 // Passcode button (white with border)
                 Gdiplus::GraphicsPath passcodePath;
@@ -432,27 +505,69 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 passcodePath.AddArc(passcodeButtonRect.left, passcodeButtonRect.bottom - r*2, r*2, r*2, 90, 90);
                 passcodePath.CloseFigure();
 
-                Gdiplus::Color passcodeColor = hoveredButton == 2 ? Gdiplus::Color(255, 240, 240, 240) : Gdiplus::Color(255, 255, 255, 255);
+                Gdiplus::Color passcodeColor = hoveredButton == 2 ? Gdiplus::Color(255, 245, 245, 245) : Gdiplus::Color(255, 255, 255, 255);
                 Gdiplus::SolidBrush passcodeBrush(passcodeColor);
                 graphics.FillPath(&passcodeBrush, &passcodePath);
-                Gdiplus::Pen borderPen(Gdiplus::Color(255, 200, 200, 200), 1);
+                Gdiplus::Pen borderPen(Gdiplus::Color(255, 220, 220, 220), 1);
                 graphics.DrawPath(&borderPen, &passcodePath);
 
+                // Draw key icon on passcode button
+                {
+                    int iconX = passcodeButtonRect.left + 55;
+                    int iconY = (passcodeButtonRect.top + passcodeButtonRect.bottom) / 2;
+
+                    Gdiplus::Pen keyPen(Gdiplus::Color(255, 100, 100, 100), 1.8f);
+                    keyPen.SetStartCap(Gdiplus::LineCapRound);
+                    keyPen.SetEndCap(Gdiplus::LineCapRound);
+
+                    // Key head (circle)
+                    graphics.DrawEllipse(&keyPen, iconX - 10, iconY - 7, 10, 10);
+
+                    // Key shaft
+                    graphics.DrawLine(&keyPen, iconX - 2, iconY - 2, iconX + 8, iconY + 8);
+
+                    // Key teeth
+                    graphics.DrawLine(&keyPen, iconX + 4, iconY + 4, iconX + 4, iconY + 7);
+                    graphics.DrawLine(&keyPen, iconX + 7, iconY + 7, iconX + 7, iconY + 10);
+                }
+
                 // Passcode button text
-                Gdiplus::SolidBrush darkBrush(Gdiplus::Color(255, 41, 60, 81));
-                Gdiplus::RectF passcodeRectF((float)passcodeButtonRect.left, (float)passcodeButtonRect.top,
-                                             (float)(passcodeButtonRect.right - passcodeButtonRect.left),
+                Gdiplus::SolidBrush darkBrush(Gdiplus::Color(255, 80, 80, 80));
+                Gdiplus::RectF passcodeRectF((float)passcodeButtonRect.left + 25, (float)passcodeButtonRect.top,
+                                             (float)(passcodeButtonRect.right - passcodeButtonRect.left) - 25,
                                              (float)(passcodeButtonRect.bottom - passcodeButtonRect.top));
-                graphics.DrawString(L"\u26BF  Passcode", -1, &btnFont, passcodeRectF, &sf, &darkBrush);
+                graphics.DrawString(L"Passcode", -1, &btnFont, passcodeRectF, &sf, &darkBrush);
             }
 
-            // Cancel link
-            HFONT cancelFont = CreateFontW(12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-            SelectObject(memDC, cancelFont);
-            SetTextColor(memDC, hoveredButton == 3 ? RGB(80, 80, 80) : WP_TEXT_GRAY);
-            DrawTextW(memDC, L"\u2297  CANCEL REQUEST", -1, &cancelLinkRect, DT_CENTER | DT_SINGLELINE);
+            // Cancel link with X icon
+            {
+                Gdiplus::Graphics graphics(memDC);
+                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+                int cancelCX = DLG_WIDTH / 2;
+                int cancelCY = cancelLinkRect.top + 8;
+
+                // Draw circle with X
+                Gdiplus::Color cancelColor = hoveredButton == 3 ? Gdiplus::Color(255, 80, 80, 80) : Gdiplus::Color(255, 150, 150, 150);
+                Gdiplus::Pen circlePen(cancelColor, 1.2f);
+                graphics.DrawEllipse(&circlePen, cancelCX - 55, cancelCY - 6, 12, 12);
+
+                // X inside circle
+                graphics.DrawLine(&circlePen, cancelCX - 52, cancelCY - 3, cancelCX - 46, cancelCY + 3);
+                graphics.DrawLine(&circlePen, cancelCX - 46, cancelCY - 3, cancelCX - 52, cancelCY + 3);
+
+                // Text
+                Gdiplus::FontFamily fontFamily(L"Segoe UI");
+                Gdiplus::Font cancelFontGdi(&fontFamily, 11, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+                Gdiplus::SolidBrush cancelBrush(cancelColor);
+                Gdiplus::StringFormat sf;
+                sf.SetAlignment(Gdiplus::StringAlignmentCenter);
+                sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+                Gdiplus::RectF cancelRectF((float)cancelLinkRect.left + 15, (float)cancelLinkRect.top,
+                                           (float)(cancelLinkRect.right - cancelLinkRect.left),
+                                           (float)(cancelLinkRect.bottom - cancelLinkRect.top));
+                graphics.DrawString(L"CANCEL REQUEST", -1, &cancelFontGdi, cancelRectF, &sf, &cancelBrush);
+            }
 
             // ===== FOOTER =====
             RECT footerRect = {0, DLG_HEIGHT - 40, DLG_WIDTH, DLG_HEIGHT};
@@ -483,7 +598,6 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
             DeleteObject(lockedFont);
             DeleteObject(authTitleFont);
             DeleteObject(descFont);
-            DeleteObject(cancelFont);
             DeleteObject(footerFont);
 
             // Copy to screen
