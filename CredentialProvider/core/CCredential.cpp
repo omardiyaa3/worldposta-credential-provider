@@ -870,43 +870,49 @@ HRESULT CCredential::GetSerialization(
 				_config->isSecondStep = true;
 				_config->clearFields = false;
 
-				// Set up the push callback to call the API when push button is clicked
-				// The callback is called in a background thread by the dialog
-				PI_AUTH_STATUS* piStatusPtr = &_piStatus;
-				auto* privacyIDEA = &_privacyIDEA;
-				auto* config = _config;
+				// Store pointers for the push callback
+				// These are used by the callback which runs in a background thread
+				static CCredential* s_credential = nullptr;
+				static PI_AUTH_STATUS* s_piStatusPtr = nullptr;
+				s_credential = this;
+				s_piStatusPtr = &_piStatus;
 
-				AuthDialog::SetPushCallback([piStatusPtr, privacyIDEA, config]() {
-					ReleaseDebugPrint("Push callback triggered - sending push notification");
+				// Set up push callback that triggers the actual API call
+				AuthDialog::SetPushCallback([]() {
+					if (s_credential && s_piStatusPtr) {
+						ReleaseDebugPrint("Push callback triggered - sending push notification");
 
-					// Get clean username
-					std::wstring cleanUsername = getCleanUsername(config->credential.username, config->credential.domain);
-					LPTSTR userSID = getSidFromUsername(cleanUsername);
+						// Get clean username
+						std::wstring cleanUsername = getCleanUsername(
+							s_credential->_config->credential.username,
+							s_credential->_config->credential.domain);
+						LPTSTR userSID = s_credential->getSidFromUsername(cleanUsername);
 
-					// Send push notification via WorldPosta API
-					HRESULT error_code;
-					PI_AUTH_STATUS status = privacyIDEA->validateCheck(
-						config->credential.username,
-						config->credential.domain,
-						SecureWString(L"push"),
-						"", error_code, (std::wstring)userSID);
+						// Send push notification via WorldPosta API
+						HRESULT error_code;
+						*s_piStatusPtr = s_credential->_privacyIDEA.validateCheck(
+							s_credential->_config->credential.username,
+							s_credential->_config->credential.domain,
+							SecureWString(L"push"),
+							"", error_code, (std::wstring)userSID);
 
-					*piStatusPtr = status;
-
-					// Notify the dialog of the result
-					if (status == PI_AUTH_SUCCESS) {
-						ReleaseDebugPrint("Push notification APPROVED");
-						AuthDialog::NotifyPushResult(true);
-					} else {
-						ReleaseDebugPrint("Push notification DENIED or TIMEOUT");
-						AuthDialog::NotifyPushResult(false);
+						// Notify the dialog of the result
+						if (*s_piStatusPtr == PI_AUTH_SUCCESS) {
+							ReleaseDebugPrint("Push notification APPROVED");
+							AuthDialog::NotifyPushResult(true);
+						} else {
+							ReleaseDebugPrint("Push notification DENIED or TIMEOUT");
+							AuthDialog::NotifyPushResult(false);
+						}
 					}
 				});
 
 				AuthMethod choice = AuthDialog::ShowAuthChoiceDialog(NULL);
 
-				// Clear the callback after dialog closes
+				// Clear the callback and static pointers after dialog closes
 				AuthDialog::SetPushCallback(nullptr);
+				s_credential = nullptr;
+				s_piStatusPtr = nullptr;
 
 				if (choice == AuthMethod::PUSH)
 				{
@@ -929,35 +935,38 @@ HRESULT CCredential::GetSerialization(
 				{
 					ReleaseDebugPrint("User chose OTP authentication");
 
+					// Store pointers for the OTP callback
+					s_credential = this;
+					s_piStatusPtr = &_piStatus;
+
 					// Set up OTP verification callback
-					PI_AUTH_STATUS* piStatusPtr = &_piStatus;
-					auto* privacyIDEA = &_privacyIDEA;
-					auto* config = _config;
+					AuthDialog::SetOTPVerifyCallback([](const std::wstring& code) -> bool {
+						if (s_credential && s_piStatusPtr) {
+							ReleaseDebugPrint("OTP verification callback triggered");
 
-					AuthDialog::SetOTPVerifyCallback([piStatusPtr, privacyIDEA, config](const std::wstring& code) -> bool {
-						ReleaseDebugPrint("OTP verification callback triggered");
+							// Get clean username
+							std::wstring cleanUsername = getCleanUsername(
+								s_credential->_config->credential.username,
+								s_credential->_config->credential.domain);
+							LPTSTR userSID = s_credential->getSidFromUsername(cleanUsername);
 
-						// Get clean username
-						std::wstring cleanUsername = getCleanUsername(config->credential.username, config->credential.domain);
-						LPTSTR userSID = getSidFromUsername(cleanUsername);
+							// Verify OTP via WorldPosta API
+							HRESULT error_code;
+							*s_piStatusPtr = s_credential->_privacyIDEA.validateCheck(
+								s_credential->_config->credential.username,
+								s_credential->_config->credential.domain,
+								SecureWString(code.c_str()),
+								"", error_code, (std::wstring)userSID);
 
-						// Verify OTP via WorldPosta API
-						HRESULT error_code;
-						PI_AUTH_STATUS status = privacyIDEA->validateCheck(
-							config->credential.username,
-							config->credential.domain,
-							SecureWString(code.c_str()),
-							"", error_code, (std::wstring)userSID);
-
-						*piStatusPtr = status;
-
-						if (status == PI_AUTH_SUCCESS) {
-							ReleaseDebugPrint("OTP verification SUCCESS");
-							return true;
-						} else {
-							ReleaseDebugPrint("OTP verification FAILED");
-							return false;
+							if (*s_piStatusPtr == PI_AUTH_SUCCESS) {
+								ReleaseDebugPrint("OTP verification SUCCESS");
+								return true;
+							} else {
+								ReleaseDebugPrint("OTP verification FAILED");
+								return false;
+							}
 						}
+						return false;
 					});
 
 					// Show OTP input dialog - now with state-based verification
@@ -965,6 +974,8 @@ HRESULT CCredential::GetSerialization(
 
 					// Clear the callback after dialog closes
 					AuthDialog::SetOTPVerifyCallback(nullptr);
+					s_credential = nullptr;
+					s_piStatusPtr = nullptr;
 
 					if (!otpCode.empty() && _piStatus == PI_AUTH_SUCCESS)
 					{
