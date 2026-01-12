@@ -23,7 +23,7 @@ extern HINSTANCE g_hinst;
 #define WP_TEXT_GRAY RGB(120, 120, 120)
 
 // Dialog dimensions - new clean design
-#define DLG_WIDTH 420
+#define DLG_WIDTH 450
 #define DLG_HEIGHT 580
 #define LOGO_SIZE 50
 #define LOCK_ICON_SIZE 80

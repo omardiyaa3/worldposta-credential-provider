@@ -475,19 +475,46 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
 
     // Read WorldPosta configuration from registry
     PWSTR endpoint = nullptr;
-    PWSTR integrationKey = nullptr;
-    PWSTR secretKey = nullptr;
+    std::wstring wsIntegrationKey;
+    std::wstring wsSecretKey;
 
-    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") < 2) {
+    // Read endpoint (not sensitive, can be plaintext)
+    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"");
+
+    // Try to read encrypted keys first (secure storage)
+    wsIntegrationKey = SecureStorage::ReadEncryptedRegistryValue(
+        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        L"worldposta_integration_key_enc");
+    wsSecretKey = SecureStorage::ReadEncryptedRegistryValue(
+        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        L"worldposta_secret_key_enc");
+
+    // Fall back to plaintext if encrypted not found (for migration)
+    if (wsIntegrationKey.empty()) {
+        PWSTR integrationKey = nullptr;
+        if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") > 1) {
+            wsIntegrationKey = integrationKey;
+        }
+    }
+    if (wsSecretKey.empty()) {
+        PWSTR secretKey = nullptr;
+        if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") > 1) {
+            wsSecretKey = secretKey;
+        }
+    }
+
+    if (epLen < 2 || wsIntegrationKey.empty() || wsSecretKey.empty()) {
         if (DEVELOP_MODE) PrintLn("WorldPosta configuration not found");
         return E_FAIL;
     }
 
     std::wstring wsEndpoint = endpoint;
-    std::string sIntegrationKey = WStringToString(integrationKey);
-    std::string sSecretKey = WStringToString(secretKey);
+    std::string sIntegrationKey = WStringToString(wsIntegrationKey);
+    std::string sSecretKey = WStringToString(wsSecretKey);
+
+    // Securely clear the wide string versions
+    SecureZeroMemory(&wsIntegrationKey[0], wsIntegrationKey.size() * sizeof(wchar_t));
+    SecureZeroMemory(&wsSecretKey[0], wsSecretKey.size() * sizeof(wchar_t));
 
     // Clean username
     std::wstring cleanUsername = getCleanUsername(username, domain);
@@ -531,18 +558,45 @@ HRESULT MultiOTP::checkPushStatus()
 
     // Read WorldPosta configuration from registry
     PWSTR endpoint = nullptr;
-    PWSTR integrationKey = nullptr;
-    PWSTR secretKey = nullptr;
+    std::wstring wsIntegrationKey;
+    std::wstring wsSecretKey;
 
-    if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") < 2 ||
-        readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") < 2) {
+    // Read endpoint (not sensitive, can be plaintext)
+    DWORD epLen = readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_api_endpoint", &endpoint, L"");
+
+    // Try to read encrypted keys first (secure storage)
+    wsIntegrationKey = SecureStorage::ReadEncryptedRegistryValue(
+        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        L"worldposta_integration_key_enc");
+    wsSecretKey = SecureStorage::ReadEncryptedRegistryValue(
+        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        L"worldposta_secret_key_enc");
+
+    // Fall back to plaintext if encrypted not found (for migration)
+    if (wsIntegrationKey.empty()) {
+        PWSTR integrationKey = nullptr;
+        if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_integration_key", &integrationKey, L"") > 1) {
+            wsIntegrationKey = integrationKey;
+        }
+    }
+    if (wsSecretKey.empty()) {
+        PWSTR secretKey = nullptr;
+        if (readKeyValueInMultiOTPRegistry(HKEY_CLASSES_ROOT, L"", L"worldposta_secret_key", &secretKey, L"") > 1) {
+            wsSecretKey = secretKey;
+        }
+    }
+
+    if (epLen < 2 || wsIntegrationKey.empty() || wsSecretKey.empty()) {
         return E_FAIL;
     }
 
     std::wstring wsEndpoint = endpoint;
-    std::string sIntegrationKey = WStringToString(integrationKey);
-    std::string sSecretKey = WStringToString(secretKey);
+    std::string sIntegrationKey = WStringToString(wsIntegrationKey);
+    std::string sSecretKey = WStringToString(wsSecretKey);
+
+    // Securely clear the wide string versions
+    SecureZeroMemory(&wsIntegrationKey[0], wsIntegrationKey.size() * sizeof(wchar_t));
+    SecureZeroMemory(&wsSecretKey[0], wsSecretKey.size() * sizeof(wchar_t));
 
     // Build path with requestId
     std::string path = "/v1/push/status/" + g_lastPushRequestId;
