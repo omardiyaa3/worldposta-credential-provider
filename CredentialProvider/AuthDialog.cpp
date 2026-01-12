@@ -790,13 +790,10 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
 
             if (g_dialogState == DialogState::CHOICE) {
                 if (PtInRect(&pushButtonRect, pt)) {
-                    // Change to waiting state instead of closing
-                    g_dialogState = DialogState::WAITING;
-                    InvalidateRect(hwnd, NULL, FALSE);
-                    // Signal that push was selected (parent will handle actual push)
+                    // Close dialog and return PUSH choice
+                    // CCredential will handle showing waiting dialog and sending push
                     g_authChoice = AuthMethod::PUSH;
-                    // Post message to indicate push was clicked
-                    PostMessage(hwnd, WM_PUSH_RESULT, 0, 0);  // 0 = start push
+                    DestroyWindow(hwnd);
                 } else if (PtInRect(&passcodeButtonRect, pt)) {
                     g_authChoice = AuthMethod::OTP;
                     DestroyWindow(hwnd);
