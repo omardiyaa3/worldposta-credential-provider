@@ -4,6 +4,7 @@
 #include <windowsx.h>
 #include <gdiplus.h>
 #include <shlobj.h>
+#include <thread>
 
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "gdiplus.lib")
@@ -49,6 +50,20 @@ enum class DialogState {
 };
 static DialogState g_dialogState = DialogState::CHOICE;
 static HWND g_mainDialogHwnd = NULL;
+
+// Callbacks for push and OTP
+static PushCallback g_pushCallback = nullptr;
+static OTPVerifyCallback g_otpVerifyCallback = nullptr;
+
+// Set push callback
+void AuthDialog::SetPushCallback(PushCallback callback) {
+    g_pushCallback = callback;
+}
+
+// Set OTP verify callback
+void AuthDialog::SetOTPVerifyCallback(OTPVerifyCallback callback) {
+    g_otpVerifyCallback = callback;
+}
 
 // GDI+ token and logo images
 static ULONG_PTR g_gdiplusToken = 0;
@@ -806,8 +821,13 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
         {
             // wParam: 0 = start push, 1 = approved, 2 = denied/timeout
             if (wParam == 0) {
-                // Push started - we're already in WAITING state
-                // The parent ShowAuthDialog will handle the actual push and call back
+                // Push started - call the push callback to trigger actual push
+                if (g_pushCallback) {
+                    // Run push in background thread
+                    std::thread([hwnd]() {
+                        g_pushCallback();
+                    }).detach();
+                }
             } else if (wParam == 1) {
                 // Approved
                 g_dialogState = DialogState::APPROVED;
@@ -816,9 +836,9 @@ static LRESULT CALLBACK AuthDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LP
                 // Close after 1.5 seconds
                 SetTimer(hwnd, 1, 1500, NULL);
             } else {
-                // Denied or timeout
+                // Denied or timeout - keep g_authChoice as PUSH so caller knows push was attempted
                 g_dialogState = DialogState::DENIED;
-                g_authChoice = AuthMethod::CANCEL;
+                // g_authChoice stays as PUSH - the caller checks _piStatus for actual result
                 InvalidateRect(hwnd, NULL, FALSE);
                 // Close after 2 seconds
                 SetTimer(hwnd, 1, 2000, NULL);
@@ -924,21 +944,38 @@ AuthMethod AuthDialog::ShowAuthChoiceDialog(HWND parent) {
     return g_authChoice;
 }
 
-// OTP Input Dialog - New clean design matching main dialog
+// OTP dialog states
+enum class OTPDialogState {
+    INPUT,      // Entering code
+    VERIFYING,  // Verifying code
+    SUCCESS,    // Code verified
+    FAILURE     // Code invalid
+};
+static OTPDialogState g_otpDialogState = OTPDialogState::INPUT;
+static HWND g_otpDialogHwnd = NULL;
+
+// Custom message for OTP verify result
+#define WM_OTP_RESULT (WM_USER + 101)
+
+// OTP Input Dialog - New clean design with state flow like push
 static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     static HWND hEdit = NULL;
     static RECT verifyButtonRect = {0};
     static RECT cancelLinkRect = {0};
     static int hoveredItem = 0;  // 0=none, 1=verify, 2=cancel
+    static std::wstring enteredCode;
 
     const int OTP_DLG_WIDTH = 420;
-    const int OTP_DLG_HEIGHT = 480;
+    const int OTP_DLG_HEIGHT = 580;
 
     switch (msg) {
     case WM_CREATE:
         {
             InitGDIPlus();
             LoadLogoImage();
+            g_otpDialogHwnd = hwnd;
+            g_otpDialogState = OTPDialogState::INPUT;
+            enteredCode.clear();
 
             // Create edit control - centered in dialog
             hEdit = CreateWindowExW(
@@ -946,7 +983,7 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
                 L"EDIT",
                 L"",
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_CENTER | ES_NUMBER,
-                50, 300,
+                50, 320,
                 OTP_DLG_WIDTH - 100, 50,
                 hwnd, (HMENU)IDC_OTP_EDIT, NULL, NULL
             );
@@ -958,10 +995,10 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
             SetFocus(hEdit);
 
             // Verify button
-            verifyButtonRect = {30, 370, OTP_DLG_WIDTH - 30, 420};
+            verifyButtonRect = {30, 390, OTP_DLG_WIDTH - 30, 440};
 
             // Cancel link
-            cancelLinkRect = {OTP_DLG_WIDTH/2 - 60, 435, OTP_DLG_WIDTH/2 + 60, 460};
+            cancelLinkRect = {OTP_DLG_WIDTH/2 - 60, 455, OTP_DLG_WIDTH/2 + 60, 480};
         }
         return 0;
 
@@ -998,125 +1035,370 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
             RECT titleRect = {85, 25, OTP_DLG_WIDTH - 30, 50};
             DrawTextW(memDC, L"WorldPosta Authenticator", -1, &titleRect, DT_LEFT | DT_SINGLELINE);
 
-            // Subtitle: "PASSCODE VERIFICATION"
-            HFONT subtitleFont = CreateFontW(11, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-            SelectObject(memDC, subtitleFont);
-            SetTextColor(memDC, WP_GREEN);
-            RECT subtitleRect = {85, 48, OTP_DLG_WIDTH - 30, 65};
-            DrawTextW(memDC, L"PASSCODE VERIFICATION", -1, &subtitleRect, DT_LEFT | DT_SINGLELINE);
+            // Subtitle badge - changes based on state
+            {
+                Gdiplus::Graphics graphics(memDC);
+                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
-            // ===== PASSCODE ICON IN CIRCLE =====
+                const wchar_t* badgeText = L"VERIFICATION";
+                Gdiplus::Color bgColor(255, 103, 154, 65);
+                Gdiplus::Color txtColor(255, 255, 255, 255);
+
+                switch (g_otpDialogState) {
+                case OTPDialogState::VERIFYING:
+                    badgeText = L"VERIFYING";
+                    bgColor = Gdiplus::Color(255, 196, 144, 68);
+                    break;
+                case OTPDialogState::SUCCESS:
+                    badgeText = L"VERIFIED";
+                    bgColor = Gdiplus::Color(255, 103, 154, 65);
+                    break;
+                case OTPDialogState::FAILURE:
+                    badgeText = L"FAILED";
+                    bgColor = Gdiplus::Color(255, 200, 80, 80);
+                    break;
+                default:
+                    break;
+                }
+
+                int badgeX = 85;
+                int badgeY = 48;
+                Gdiplus::GraphicsPath badgePath;
+                badgePath.AddArc(badgeX, badgeY, 10, 14, 180, 90);
+                badgePath.AddArc(badgeX + 80, badgeY, 10, 14, 270, 90);
+                badgePath.AddArc(badgeX + 80, badgeY + 6, 10, 14, 0, 90);
+                badgePath.AddArc(badgeX, badgeY + 6, 10, 14, 90, 90);
+                badgePath.CloseFigure();
+
+                Gdiplus::SolidBrush badgeBrush(bgColor);
+                graphics.FillPath(&badgeBrush, &badgePath);
+
+                Gdiplus::FontFamily fontFamily(L"Segoe UI");
+                Gdiplus::Font badgeFont(&fontFamily, 9, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+                Gdiplus::SolidBrush textBrush(txtColor);
+                graphics.DrawString(badgeText, -1, &badgeFont, Gdiplus::PointF((float)badgeX + 12, (float)badgeY + 5), &textBrush);
+            }
+
+            // ===== SHIELD ICON SECTION WITH STATE-BASED GLOW =====
             {
                 Gdiplus::Graphics graphics(memDC);
                 graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
                 int circleX = OTP_DLG_WIDTH / 2;
-                int circleY = 140;
-                int circleRadius = 55;
+                int circleY = 175;
+                int circleRadius = 75;
 
-                // Shadow
-                Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(30, 0, 0, 0));
-                graphics.FillEllipse(&shadowBrush, circleX - circleRadius + 3, circleY - circleRadius + 3, circleRadius * 2, circleRadius * 2);
+                // Glow/Shadow based on state
+                if (g_otpDialogState == OTPDialogState::SUCCESS) {
+                    // Green glow for success
+                    for (int i = 5; i >= 0; i--) {
+                        int glowRadius = circleRadius + 8 + i * 5;
+                        int alpha = 35 - i * 5;
+                        Gdiplus::SolidBrush glowBrush(Gdiplus::Color(alpha, 103, 154, 65));
+                        graphics.FillEllipse(&glowBrush, circleX - glowRadius, circleY - glowRadius, glowRadius * 2, glowRadius * 2);
+                    }
+                } else if (g_otpDialogState == OTPDialogState::FAILURE) {
+                    // Red glow for failure
+                    for (int i = 5; i >= 0; i--) {
+                        int glowRadius = circleRadius + 8 + i * 5;
+                        int alpha = 35 - i * 5;
+                        Gdiplus::SolidBrush glowBrush(Gdiplus::Color(alpha, 200, 80, 80));
+                        graphics.FillEllipse(&glowBrush, circleX - glowRadius, circleY - glowRadius, glowRadius * 2, glowRadius * 2);
+                    }
+                } else {
+                    // Normal shadow
+                    for (int i = 3; i >= 0; i--) {
+                        int shadowOffset = 4 + i * 2;
+                        int alpha = 8 + i * 5;
+                        Gdiplus::SolidBrush shadowBrush(Gdiplus::Color(alpha, 0, 0, 0));
+                        graphics.FillEllipse(&shadowBrush, circleX - circleRadius + shadowOffset,
+                                            circleY - circleRadius + shadowOffset,
+                                            circleRadius * 2, circleRadius * 2);
+                    }
+                }
 
-                // White circle
+                // White circle with colored border for success/failure
                 Gdiplus::SolidBrush whiteBrush(Gdiplus::Color(255, 255, 255, 255));
                 graphics.FillEllipse(&whiteBrush, circleX - circleRadius, circleY - circleRadius, circleRadius * 2, circleRadius * 2);
 
-                // Draw passcode icon
-                if (g_passcodeIconImage != nullptr) {
-                    int iconSize = 55;
-                    graphics.DrawImage(g_passcodeIconImage, circleX - iconSize/2, circleY - iconSize/2, iconSize, iconSize);
+                if (g_otpDialogState == OTPDialogState::SUCCESS) {
+                    Gdiplus::Pen borderPen(Gdiplus::Color(255, 103, 154, 65), 3);
+                    graphics.DrawEllipse(&borderPen, circleX - circleRadius, circleY - circleRadius, circleRadius * 2, circleRadius * 2);
+                } else if (g_otpDialogState == OTPDialogState::FAILURE) {
+                    Gdiplus::Pen borderPen(Gdiplus::Color(255, 200, 80, 80), 3);
+                    graphics.DrawEllipse(&borderPen, circleX - circleRadius, circleY - circleRadius, circleRadius * 2, circleRadius * 2);
+                }
+
+                // Draw shield icon - different based on state
+                {
+                    int shieldCX = circleX;
+                    int shieldCY = circleY - 5;
+                    int shieldW = 50;
+                    int shieldH = 58;
+
+                    // Shield path
+                    Gdiplus::GraphicsPath shieldPath;
+                    shieldPath.StartFigure();
+                    shieldPath.AddLine(shieldCX - shieldW/2, shieldCY - shieldH/2 + 8, shieldCX - shieldW/2, shieldCY + 5);
+                    shieldPath.AddBezier(shieldCX - shieldW/2, shieldCY + 5, shieldCX - shieldW/2, shieldCY + shieldH/2 - 10,
+                                        shieldCX, shieldCY + shieldH/2, shieldCX, shieldCY + shieldH/2);
+                    shieldPath.AddBezier(shieldCX, shieldCY + shieldH/2, shieldCX, shieldCY + shieldH/2,
+                                        shieldCX + shieldW/2, shieldCY + shieldH/2 - 10, shieldCX + shieldW/2, shieldCY + 5);
+                    shieldPath.AddLine(shieldCX + shieldW/2, shieldCY + 5, shieldCX + shieldW/2, shieldCY - shieldH/2 + 8);
+                    shieldPath.AddArc(shieldCX - shieldW/2, shieldCY - shieldH/2, 16, 16, 180, 90);
+                    shieldPath.AddLine(shieldCX - shieldW/2 + 8, shieldCY - shieldH/2, shieldCX + shieldW/2 - 8, shieldCY - shieldH/2);
+                    shieldPath.AddArc(shieldCX + shieldW/2 - 16, shieldCY - shieldH/2, 16, 16, 270, 90);
+                    shieldPath.CloseFigure();
+
+                    Gdiplus::Color shieldColor;
+                    if (g_otpDialogState == OTPDialogState::SUCCESS) {
+                        shieldColor = Gdiplus::Color(255, 103, 154, 65);
+                    } else if (g_otpDialogState == OTPDialogState::FAILURE) {
+                        shieldColor = Gdiplus::Color(255, 200, 80, 80);
+                    } else {
+                        shieldColor = Gdiplus::Color(255, 140, 150, 160);
+                    }
+
+                    Gdiplus::Pen shieldPen(shieldColor, 2.5f);
+                    graphics.DrawPath(&shieldPen, &shieldPath);
+
+                    // Draw icon inside shield based on state
+                    if (g_otpDialogState == OTPDialogState::SUCCESS) {
+                        // Checkmark for success
+                        Gdiplus::Pen checkPen(shieldColor, 3.5f);
+                        checkPen.SetStartCap(Gdiplus::LineCapRound);
+                        checkPen.SetEndCap(Gdiplus::LineCapRound);
+                        checkPen.SetLineJoin(Gdiplus::LineJoinRound);
+                        graphics.DrawLine(&checkPen, shieldCX - 12, shieldCY, shieldCX - 3, shieldCY + 10);
+                        graphics.DrawLine(&checkPen, shieldCX - 3, shieldCY + 10, shieldCX + 14, shieldCY - 8);
+                    } else if (g_otpDialogState == OTPDialogState::FAILURE) {
+                        // X for failure
+                        Gdiplus::Pen xPen(shieldColor, 3.5f);
+                        xPen.SetStartCap(Gdiplus::LineCapRound);
+                        xPen.SetEndCap(Gdiplus::LineCapRound);
+                        graphics.DrawLine(&xPen, shieldCX - 10, shieldCY - 10, shieldCX + 10, shieldCY + 10);
+                        graphics.DrawLine(&xPen, shieldCX + 10, shieldCY - 10, shieldCX - 10, shieldCY + 10);
+                    } else {
+                        // Key icon for input/verifying
+                        Gdiplus::Pen keyPen(shieldColor, 2.5f);
+                        keyPen.SetStartCap(Gdiplus::LineCapRound);
+                        keyPen.SetEndCap(Gdiplus::LineCapRound);
+                        // Key ring
+                        graphics.DrawEllipse(&keyPen, shieldCX - 12, shieldCY - 12, 14, 14);
+                        // Key shaft
+                        graphics.DrawLine(&keyPen, shieldCX + 2, shieldCY + 2, shieldCX + 12, shieldCY + 12);
+                        // Key teeth
+                        graphics.DrawLine(&keyPen, shieldCX + 7, shieldCY + 7, shieldCX + 7, shieldCY + 11);
+                        graphics.DrawLine(&keyPen, shieldCX + 10, shieldCY + 10, shieldCX + 10, shieldCY + 14);
+                    }
                 }
             }
 
+            // Status text below the circle - changes based on state
+            HFONT statusFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
+            SelectObject(memDC, statusFont);
+
+            const wchar_t* statusText = L"P A S S C O D E";
+            COLORREF statusColor = RGB(180, 180, 180);
+
+            switch (g_otpDialogState) {
+            case OTPDialogState::VERIFYING:
+                statusText = L"V E R I F Y I N G";
+                statusColor = RGB(196, 144, 68);
+                break;
+            case OTPDialogState::SUCCESS:
+                statusText = L"A C C E S S   G R A N T E D";
+                statusColor = RGB(103, 154, 65);
+                break;
+            case OTPDialogState::FAILURE:
+                statusText = L"I N V A L I D   C O D E";
+                statusColor = RGB(200, 80, 80);
+                break;
+            default:
+                break;
+            }
+
+            SetTextColor(memDC, statusColor);
+            RECT statusRect = {0, 258, OTP_DLG_WIDTH, 278};
+            DrawTextW(memDC, statusText, -1, &statusRect, DT_CENTER | DT_SINGLELINE);
+
             // ===== CONTENT SECTION =====
-            // "Enter Passcode" title
             HFONT contentTitleFont = CreateFontW(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             SelectObject(memDC, contentTitleFont);
-            SetTextColor(memDC, WP_DARK_BLUE);
-            RECT contentTitleRect = {0, 210, OTP_DLG_WIDTH, 240};
-            DrawTextW(memDC, L"Enter Passcode", -1, &contentTitleRect, DT_CENTER | DT_SINGLELINE);
 
-            // Description
+            const wchar_t* titleText = L"Enter Passcode";
+            const wchar_t* descText = L"Enter the 6-digit code from your\nWorldPosta Authenticator app";
+            COLORREF titleColor = WP_DARK_BLUE;
+
+            switch (g_otpDialogState) {
+            case OTPDialogState::VERIFYING:
+                titleText = L"Verifying Code";
+                descText = L"Please wait while we verify\nyour passcode...";
+                break;
+            case OTPDialogState::SUCCESS:
+                titleText = L"Verification Successful";
+                descText = L"Your identity has been verified.\nYou will be signed in shortly.";
+                titleColor = RGB(103, 154, 65);
+                break;
+            case OTPDialogState::FAILURE:
+                titleText = L"Verification Failed";
+                descText = L"The passcode was incorrect.\nPlease try again.";
+                titleColor = RGB(200, 80, 80);
+                break;
+            default:
+                break;
+            }
+
+            SetTextColor(memDC, titleColor);
+            RECT contentTitleRect = {0, 290, OTP_DLG_WIDTH, 320};
+            DrawTextW(memDC, titleText, -1, &contentTitleRect, DT_CENTER | DT_SINGLELINE);
+
             HFONT descFont = CreateFontW(13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             SelectObject(memDC, descFont);
             SetTextColor(memDC, WP_TEXT_GRAY);
-            RECT descRect = {30, 248, OTP_DLG_WIDTH - 30, 290};
-            DrawTextW(memDC, L"Enter the 6-digit code from your\nWorldPosta Authenticator app", -1, &descRect, DT_CENTER);
+            RECT descRect = {30, 325, OTP_DLG_WIDTH - 30, 370};
+            DrawTextW(memDC, descText, -1, &descRect, DT_CENTER);
 
-            // Draw edit box border
-            {
+            // ===== INPUT SECTION ===== (only in INPUT state)
+            if (g_otpDialogState == OTPDialogState::INPUT) {
+                // Draw edit box border
+                {
+                    Gdiplus::Graphics graphics(memDC);
+                    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+                    RECT editRect;
+                    GetWindowRect(hEdit, &editRect);
+                    MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&editRect, 2);
+
+                    Gdiplus::GraphicsPath editPath;
+                    int r = 6;
+                    int ex = editRect.left - 3, ey = editRect.top - 3;
+                    int ew = editRect.right - editRect.left + 6, eh = editRect.bottom - editRect.top + 6;
+                    editPath.AddArc(ex, ey, r*2, r*2, 180, 90);
+                    editPath.AddArc(ex + ew - r*2, ey, r*2, r*2, 270, 90);
+                    editPath.AddArc(ex + ew - r*2, ey + eh - r*2, r*2, r*2, 0, 90);
+                    editPath.AddArc(ex, ey + eh - r*2, r*2, r*2, 90, 90);
+                    editPath.CloseFigure();
+
+                    Gdiplus::Pen borderPen(Gdiplus::Color(255, 200, 200, 200), 2);
+                    graphics.DrawPath(&borderPen, &editPath);
+                }
+
+                // ===== VERIFY BUTTON =====
+                {
+                    Gdiplus::Graphics graphics(memDC);
+                    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+                    Gdiplus::GraphicsPath verifyPath;
+                    int r = 8;
+                    verifyPath.AddArc(verifyButtonRect.left, verifyButtonRect.top, r*2, r*2, 180, 90);
+                    verifyPath.AddArc(verifyButtonRect.right - r*2, verifyButtonRect.top, r*2, r*2, 270, 90);
+                    verifyPath.AddArc(verifyButtonRect.right - r*2, verifyButtonRect.bottom - r*2, r*2, r*2, 0, 90);
+                    verifyPath.AddArc(verifyButtonRect.left, verifyButtonRect.bottom - r*2, r*2, r*2, 90, 90);
+                    verifyPath.CloseFigure();
+
+                    Gdiplus::Color verifyColor = hoveredItem == 1 ? Gdiplus::Color(255, 85, 135, 55) : Gdiplus::Color(255, 103, 154, 65);
+                    Gdiplus::SolidBrush verifyBrush(verifyColor);
+                    graphics.FillPath(&verifyBrush, &verifyPath);
+
+                    // Draw checkmark icon
+                    int iconX = verifyButtonRect.left + 70;
+                    int iconY = (verifyButtonRect.top + verifyButtonRect.bottom) / 2;
+                    Gdiplus::Pen checkPen(Gdiplus::Color(255, 255, 255, 255), 2.0f);
+                    checkPen.SetStartCap(Gdiplus::LineCapRound);
+                    checkPen.SetEndCap(Gdiplus::LineCapRound);
+                    graphics.DrawLine(&checkPen, iconX - 6, iconY, iconX - 2, iconY + 4);
+                    graphics.DrawLine(&checkPen, iconX - 2, iconY + 4, iconX + 6, iconY - 4);
+
+                    Gdiplus::FontFamily fontFamily(L"Segoe UI");
+                    Gdiplus::Font btnFont(&fontFamily, 14, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+                    Gdiplus::SolidBrush whiteBrush(Gdiplus::Color(255, 255, 255, 255));
+                    Gdiplus::StringFormat sf;
+                    sf.SetAlignment(Gdiplus::StringAlignmentCenter);
+                    sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+                    Gdiplus::RectF verifyRectF((float)verifyButtonRect.left + 20, (float)verifyButtonRect.top,
+                                               (float)(verifyButtonRect.right - verifyButtonRect.left) - 20,
+                                               (float)(verifyButtonRect.bottom - verifyButtonRect.top));
+                    graphics.DrawString(L"Verify Code", -1, &btnFont, verifyRectF, &sf, &whiteBrush);
+                }
+
+                // Cancel link
+                {
+                    Gdiplus::Graphics graphics(memDC);
+                    graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+                    int cancelCX = OTP_DLG_WIDTH / 2;
+                    int cancelCY = cancelLinkRect.top + 8;
+                    Gdiplus::Color cancelColor = hoveredItem == 2 ? Gdiplus::Color(255, 80, 80, 80) : Gdiplus::Color(255, 150, 150, 150);
+                    Gdiplus::Pen circlePen(cancelColor, 1.2f);
+                    graphics.DrawEllipse(&circlePen, cancelCX - 55, cancelCY - 6, 12, 12);
+                    graphics.DrawLine(&circlePen, cancelCX - 52, cancelCY - 3, cancelCX - 46, cancelCY + 3);
+                    graphics.DrawLine(&circlePen, cancelCX - 46, cancelCY - 3, cancelCX - 52, cancelCY + 3);
+
+                    Gdiplus::FontFamily fontFamily(L"Segoe UI");
+                    Gdiplus::Font cancelFontGdi(&fontFamily, 11, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+                    Gdiplus::SolidBrush cancelBrush(cancelColor);
+                    Gdiplus::StringFormat sf;
+                    sf.SetAlignment(Gdiplus::StringAlignmentCenter);
+                    sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+                    Gdiplus::RectF cancelRectF((float)cancelLinkRect.left + 15, (float)cancelLinkRect.top,
+                                               (float)(cancelLinkRect.right - cancelLinkRect.left),
+                                               (float)(cancelLinkRect.bottom - cancelLinkRect.top));
+                    graphics.DrawString(L"CANCEL", -1, &cancelFontGdi, cancelRectF, &sf, &cancelBrush);
+                }
+            }
+            // Show loading animation in VERIFYING state
+            else if (g_otpDialogState == OTPDialogState::VERIFYING) {
                 Gdiplus::Graphics graphics(memDC);
                 graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
 
-                RECT editRect;
-                GetWindowRect(hEdit, &editRect);
-                MapWindowPoints(HWND_DESKTOP, hwnd, (LPPOINT)&editRect, 2);
+                // Loading dots
+                int dotY = 420;
+                int dotRadius = 6;
+                int dotSpacing = 25;
+                int startX = OTP_DLG_WIDTH / 2 - dotSpacing;
 
-                Gdiplus::GraphicsPath editPath;
-                int r = 6;
-                int ex = editRect.left - 3, ey = editRect.top - 3;
-                int ew = editRect.right - editRect.left + 6, eh = editRect.bottom - editRect.top + 6;
-                editPath.AddArc(ex, ey, r*2, r*2, 180, 90);
-                editPath.AddArc(ex + ew - r*2, ey, r*2, r*2, 270, 90);
-                editPath.AddArc(ex + ew - r*2, ey + eh - r*2, r*2, r*2, 0, 90);
-                editPath.AddArc(ex, ey + eh - r*2, r*2, r*2, 90, 90);
-                editPath.CloseFigure();
+                Gdiplus::SolidBrush dot1(Gdiplus::Color(255, 103, 154, 65));
+                Gdiplus::SolidBrush dot2(Gdiplus::Color(150, 103, 154, 65));
+                Gdiplus::SolidBrush dot3(Gdiplus::Color(80, 103, 154, 65));
 
-                Gdiplus::Pen borderPen(Gdiplus::Color(255, 200, 200, 200), 2);
-                graphics.DrawPath(&borderPen, &editPath);
+                graphics.FillEllipse(&dot1, startX - dotRadius, dotY - dotRadius, dotRadius * 2, dotRadius * 2);
+                graphics.FillEllipse(&dot2, startX + dotSpacing - dotRadius, dotY - dotRadius, dotRadius * 2, dotRadius * 2);
+                graphics.FillEllipse(&dot3, startX + dotSpacing * 2 - dotRadius, dotY - dotRadius, dotRadius * 2, dotRadius * 2);
             }
 
-            // ===== VERIFY BUTTON =====
-            {
-                Gdiplus::Graphics graphics(memDC);
-                graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            // ===== FOOTER =====
+            RECT footerRect = {0, OTP_DLG_HEIGHT - 40, OTP_DLG_WIDTH, OTP_DLG_HEIGHT};
+            HBRUSH footerBrush = CreateSolidBrush(WP_LIGHT_GRAY);
+            FillRect(memDC, &footerRect, footerBrush);
+            DeleteObject(footerBrush);
 
-                Gdiplus::GraphicsPath verifyPath;
-                int r = 8;
-                verifyPath.AddArc(verifyButtonRect.left, verifyButtonRect.top, r*2, r*2, 180, 90);
-                verifyPath.AddArc(verifyButtonRect.right - r*2, verifyButtonRect.top, r*2, r*2, 270, 90);
-                verifyPath.AddArc(verifyButtonRect.right - r*2, verifyButtonRect.bottom - r*2, r*2, r*2, 0, 90);
-                verifyPath.AddArc(verifyButtonRect.left, verifyButtonRect.bottom - r*2, r*2, r*2, 90, 90);
-                verifyPath.CloseFigure();
-
-                Gdiplus::Color verifyColor = hoveredItem == 1 ? Gdiplus::Color(255, 85, 135, 55) : Gdiplus::Color(255, 103, 154, 65);
-                Gdiplus::SolidBrush verifyBrush(verifyColor);
-                graphics.FillPath(&verifyBrush, &verifyPath);
-
-                Gdiplus::FontFamily fontFamily(L"Segoe UI");
-                Gdiplus::Font btnFont(&fontFamily, 14, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-                Gdiplus::SolidBrush whiteBrush(Gdiplus::Color(255, 255, 255, 255));
-                Gdiplus::StringFormat sf;
-                sf.SetAlignment(Gdiplus::StringAlignmentCenter);
-                sf.SetLineAlignment(Gdiplus::StringAlignmentCenter);
-                Gdiplus::RectF verifyRectF((float)verifyButtonRect.left, (float)verifyButtonRect.top,
-                                           (float)(verifyButtonRect.right - verifyButtonRect.left),
-                                           (float)(verifyButtonRect.bottom - verifyButtonRect.top));
-                graphics.DrawString(L"\u2713  Verify Code", -1, &btnFont, verifyRectF, &sf, &whiteBrush);
-            }
-
-            // Cancel link
-            HFONT cancelFont = CreateFontW(12, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
+            HFONT footerFont = CreateFontW(10, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
-            SelectObject(memDC, cancelFont);
-            SetTextColor(memDC, hoveredItem == 2 ? RGB(80, 80, 80) : WP_TEXT_GRAY);
-            DrawTextW(memDC, L"Cancel", -1, &cancelLinkRect, DT_CENTER | DT_SINGLELINE);
+            SelectObject(memDC, footerFont);
+
+            SetTextColor(memDC, WP_GREEN);
+            RECT footerStatusRect = {20, OTP_DLG_HEIGHT - 28, 180, OTP_DLG_HEIGHT - 12};
+            DrawTextW(memDC, L"\u25CF SECURE NODE ACTIVE", -1, &footerStatusRect, DT_LEFT | DT_SINGLELINE);
+
+            SetTextColor(memDC, WP_TEXT_GRAY);
+            RECT versionRect = {OTP_DLG_WIDTH - 100, OTP_DLG_HEIGHT - 28, OTP_DLG_WIDTH - 20, OTP_DLG_HEIGHT - 12};
+            DrawTextW(memDC, L"WP-AUTH V1.0.0", -1, &versionRect, DT_RIGHT | DT_SINGLELINE);
 
             // Cleanup fonts
             SelectObject(memDC, oldFont);
             DeleteObject(titleFont);
-            DeleteObject(subtitleFont);
+            DeleteObject(statusFont);
             DeleteObject(contentTitleFont);
             DeleteObject(descFont);
-            DeleteObject(cancelFont);
+            DeleteObject(footerFont);
 
             BitBlt(hdc, 0, 0, OTP_DLG_WIDTH, OTP_DLG_HEIGHT, memDC, 0, 0, SRCCOPY);
 
@@ -1153,26 +1435,91 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
             int y = GET_Y_LPARAM(lParam);
             POINT pt = {x, y};
 
-            if (PtInRect(&verifyButtonRect, pt)) {
+            if (g_otpDialogState == OTPDialogState::INPUT) {
+                if (PtInRect(&verifyButtonRect, pt)) {
+                    // Get the entered code
+                    wchar_t buffer[64] = {0};
+                    GetWindowTextW(hEdit, buffer, 64);
+                    enteredCode = buffer;
+
+                    // Change to verifying state
+                    g_otpDialogState = OTPDialogState::VERIFYING;
+                    ShowWindow(hEdit, SW_HIDE);
+                    InvalidateRect(hwnd, NULL, FALSE);
+
+                    // Post message to trigger verification
+                    PostMessage(hwnd, WM_OTP_RESULT, 0, 0);  // 0 = start verify
+                } else if (PtInRect(&cancelLinkRect, pt)) {
+                    g_otpResult = L"";
+                    DestroyWindow(hwnd);
+                }
+            }
+        }
+        return 0;
+
+    case WM_KEYDOWN:
+        if (g_otpDialogState == OTPDialogState::INPUT) {
+            if (wParam == VK_RETURN) {
+                // Get the entered code
                 wchar_t buffer[64] = {0};
                 GetWindowTextW(hEdit, buffer, 64);
-                g_otpResult = buffer;
-                DestroyWindow(hwnd);
-            } else if (PtInRect(&cancelLinkRect, pt)) {
+                enteredCode = buffer;
+
+                // Change to verifying state
+                g_otpDialogState = OTPDialogState::VERIFYING;
+                ShowWindow(hEdit, SW_HIDE);
+                InvalidateRect(hwnd, NULL, FALSE);
+
+                // Post message to trigger verification
+                PostMessage(hwnd, WM_OTP_RESULT, 0, 0);  // 0 = start verify
+            } else if (wParam == VK_ESCAPE) {
                 g_otpResult = L"";
                 DestroyWindow(hwnd);
             }
         }
         return 0;
 
-    case WM_KEYDOWN:
-        if (wParam == VK_RETURN) {
-            wchar_t buffer[64] = {0};
-            GetWindowTextW(hEdit, buffer, 64);
-            g_otpResult = buffer;
-            DestroyWindow(hwnd);
-        } else if (wParam == VK_ESCAPE) {
-            g_otpResult = L"";
+    case WM_OTP_RESULT:
+        {
+            // wParam: 0 = start verify, 1 = success, 2 = failure
+            if (wParam == 0) {
+                // Start verification - call the OTP callback
+                if (g_otpVerifyCallback) {
+                    std::wstring codeToVerify = enteredCode;
+                    std::thread([hwnd, codeToVerify]() {
+                        bool valid = g_otpVerifyCallback(codeToVerify);
+                        if (IsWindow(hwnd)) {
+                            PostMessage(hwnd, WM_OTP_RESULT, valid ? 1 : 2, 0);
+                        }
+                    }).detach();
+                } else {
+                    // No callback set - just accept the code for now
+                    g_otpResult = enteredCode;
+                    g_otpDialogState = OTPDialogState::SUCCESS;
+                    InvalidateRect(hwnd, NULL, FALSE);
+                    SetTimer(hwnd, 2, 1500, NULL);
+                }
+            } else if (wParam == 1) {
+                // OTP verified successfully
+                g_otpResult = enteredCode;
+                g_otpDialogState = OTPDialogState::SUCCESS;
+                InvalidateRect(hwnd, NULL, FALSE);
+                // Auto-close after 1.5 seconds
+                SetTimer(hwnd, 2, 1500, NULL);
+            } else {
+                // OTP verification failed
+                g_otpResult = L"";
+                g_otpDialogState = OTPDialogState::FAILURE;
+                InvalidateRect(hwnd, NULL, FALSE);
+                // Auto-close after 2 seconds
+                SetTimer(hwnd, 2, 2000, NULL);
+            }
+        }
+        return 0;
+
+    case WM_TIMER:
+        if (wParam == 2) {
+            KillTimer(hwnd, 2);
             DestroyWindow(hwnd);
         }
         return 0;
@@ -1183,6 +1530,7 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
         return 0;
 
     case WM_DESTROY:
+        g_otpDialogHwnd = NULL;
         PostQuitMessage(0);
         return 0;
     }
@@ -1208,6 +1556,7 @@ static void RegisterOTPDialogClass(HINSTANCE hInstance) {
 
 std::wstring AuthDialog::ShowOTPInputDialog(HWND parent) {
     g_otpResult = L"";
+    g_otpDialogState = OTPDialogState::INPUT;
 
     HINSTANCE hInstance = GetModuleHandle(NULL);
     RegisterOTPDialogClass(hInstance);
@@ -1215,7 +1564,7 @@ std::wstring AuthDialog::ShowOTPInputDialog(HWND parent) {
     int screenWidth = GetSystemMetrics(SM_CXSCREEN);
     int screenHeight = GetSystemMetrics(SM_CYSCREEN);
     int dlgWidth = 420;
-    int dlgHeight = 480;
+    int dlgHeight = 580;
     int x = (screenWidth - dlgWidth) / 2;
     int y = (screenHeight - dlgHeight) / 2;
 

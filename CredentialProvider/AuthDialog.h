@@ -2,6 +2,7 @@
 
 #include <Windows.h>
 #include <string>
+#include <functional>
 #include <CommCtrl.h>
 
 // Auth method choice result
@@ -19,8 +20,15 @@ enum class PushResult {
     PUSH_FAILED = 0
 };
 
+// Callback types for push and OTP verification
+using PushCallback = std::function<void()>;  // Called when push button clicked
+using OTPVerifyCallback = std::function<bool(const std::wstring& code)>;  // Returns true if OTP valid
+
 class AuthDialog {
 public:
+    // Set callbacks for push and OTP (call before ShowAuthChoiceDialog)
+    static void SetPushCallback(PushCallback callback);
+    static void SetOTPVerifyCallback(OTPVerifyCallback callback);
     // Show auth method choice dialog
     // Returns AuthMethod::PUSH, AuthMethod::OTP, or AuthMethod::CANCEL
     static AuthMethod ShowAuthChoiceDialog(HWND parent);

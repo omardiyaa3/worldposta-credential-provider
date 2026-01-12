@@ -870,30 +870,49 @@ HRESULT CCredential::GetSerialization(
 				_config->isSecondStep = true;
 				_config->clearFields = false;
 
-				AuthMethod choice = AuthDialog::ShowAuthChoiceDialog(NULL);
+				// Set up the push callback to call the API when push button is clicked
+				// The callback is called in a background thread by the dialog
+				PI_AUTH_STATUS* piStatusPtr = &_piStatus;
+				auto* privacyIDEA = &_privacyIDEA;
+				auto* config = _config;
 
-				if (choice == AuthMethod::PUSH)
-				{
-					ReleaseDebugPrint("User chose PUSH authentication");
-
-					// Show waiting dialog
-					HWND waitDlg = AuthDialog::ShowPushWaitingDialog(NULL);
+				AuthDialog::SetPushCallback([piStatusPtr, privacyIDEA, config]() {
+					ReleaseDebugPrint("Push callback triggered - sending push notification");
 
 					// Get clean username
-					std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
+					std::wstring cleanUsername = getCleanUsername(config->credential.username, config->credential.domain);
 					LPTSTR userSID = getSidFromUsername(cleanUsername);
 
 					// Send push notification via WorldPosta API
 					HRESULT error_code;
-					_piStatus = _privacyIDEA.validateCheck(
-						_config->credential.username,
-						_config->credential.domain,
+					PI_AUTH_STATUS status = privacyIDEA->validateCheck(
+						config->credential.username,
+						config->credential.domain,
 						SecureWString(L"push"),
 						"", error_code, (std::wstring)userSID);
 
-					// Close waiting dialog
-					AuthDialog::ClosePushWaitingDialog(waitDlg);
+					*piStatusPtr = status;
 
+					// Notify the dialog of the result
+					if (status == PI_AUTH_SUCCESS) {
+						ReleaseDebugPrint("Push notification APPROVED");
+						AuthDialog::NotifyPushResult(true);
+					} else {
+						ReleaseDebugPrint("Push notification DENIED or TIMEOUT");
+						AuthDialog::NotifyPushResult(false);
+					}
+				});
+
+				AuthMethod choice = AuthDialog::ShowAuthChoiceDialog(NULL);
+
+				// Clear the callback after dialog closes
+				AuthDialog::SetPushCallback(nullptr);
+
+				if (choice == AuthMethod::PUSH)
+				{
+					ReleaseDebugPrint("User chose PUSH authentication - checking result...");
+
+					// The push callback has already been called and _piStatus has been updated
 					if (_piStatus == PI_AUTH_SUCCESS) {
 						ReleaseDebugPrint("Push authentication SUCCESS");
 						_config->pushAuthenticationSuccessful = true;
@@ -901,12 +920,7 @@ HRESULT CCredential::GetSerialization(
 					}
 					else {
 						ReleaseDebugPrint("Push authentication FAILED or TIMEOUT");
-						// Use credential provider status message instead of popup (popups don't work on secure desktop)
-						if (_piStatus == PI_AUTH_FAILURE) {
-							ShowErrorMessage(L"Push notification was denied", 0);
-						} else {
-							ShowErrorMessage(L"Push notification timed out. Please try again.", 0);
-						}
+						// Status message already shown by dialog
 						*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
 						_config->isSecondStep = false; // Allow retry
 					}
@@ -915,40 +929,57 @@ HRESULT CCredential::GetSerialization(
 				{
 					ReleaseDebugPrint("User chose OTP authentication");
 
-					// Show OTP input dialog
-					std::wstring otpCode = AuthDialog::ShowOTPInputDialog(NULL);
+					// Set up OTP verification callback
+					PI_AUTH_STATUS* piStatusPtr = &_piStatus;
+					auto* privacyIDEA = &_privacyIDEA;
+					auto* config = _config;
 
-					if (!otpCode.empty())
-					{
-						// SECURITY FIX: OTP value not logged
-					ReleaseDebugPrint(L"OTP entered: [REDACTED]");
+					AuthDialog::SetOTPVerifyCallback([piStatusPtr, privacyIDEA, config](const std::wstring& code) -> bool {
+						ReleaseDebugPrint("OTP verification callback triggered");
 
 						// Get clean username
-						std::wstring cleanUsername = getCleanUsername(_config->credential.username, _config->credential.domain);
+						std::wstring cleanUsername = getCleanUsername(config->credential.username, config->credential.domain);
 						LPTSTR userSID = getSidFromUsername(cleanUsername);
 
 						// Verify OTP via WorldPosta API
 						HRESULT error_code;
-						_piStatus = _privacyIDEA.validateCheck(
-							_config->credential.username,
-							_config->credential.domain,
-							SecureWString(otpCode.c_str()),
+						PI_AUTH_STATUS status = privacyIDEA->validateCheck(
+							config->credential.username,
+							config->credential.domain,
+							SecureWString(code.c_str()),
 							"", error_code, (std::wstring)userSID);
 
-						if (_piStatus == PI_AUTH_SUCCESS) {
-							ReleaseDebugPrint("OTP authentication SUCCESS");
-							// Will proceed to Windows logon below
+						*piStatusPtr = status;
+
+						if (status == PI_AUTH_SUCCESS) {
+							ReleaseDebugPrint("OTP verification SUCCESS");
+							return true;
+						} else {
+							ReleaseDebugPrint("OTP verification FAILED");
+							return false;
 						}
-						else {
-							ReleaseDebugPrint("OTP authentication FAILED");
-							ShowErrorMessage(_config->defaultOTPFailureText, 0);
-							*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
-							_config->isSecondStep = false; // Allow retry
-						}
+					});
+
+					// Show OTP input dialog - now with state-based verification
+					std::wstring otpCode = AuthDialog::ShowOTPInputDialog(NULL);
+
+					// Clear the callback after dialog closes
+					AuthDialog::SetOTPVerifyCallback(nullptr);
+
+					if (!otpCode.empty() && _piStatus == PI_AUTH_SUCCESS)
+					{
+						ReleaseDebugPrint("OTP authentication SUCCESS");
+						// Will proceed to Windows logon below
+					}
+					else if (otpCode.empty())
+					{
+						ReleaseDebugPrint("OTP input cancelled or failed");
+						*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
+						_config->isSecondStep = false; // Allow retry
 					}
 					else
 					{
-						ReleaseDebugPrint("OTP input cancelled");
+						ReleaseDebugPrint("OTP authentication FAILED");
 						*_config->provider.pcpgsr = CPGSR_NO_CREDENTIAL_NOT_FINISHED;
 						_config->isSecondStep = false; // Allow retry
 					}
