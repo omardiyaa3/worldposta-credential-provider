@@ -485,53 +485,39 @@ static std::string GetClientIPFromEventLog()
     DWORD dwBufferUsed = 0;
     LPWSTR pRenderedContent = NULL;
 
-    PrintLn("GetClientIPFromEventLog: Starting Event Log query");
-
     // Query the most recent Event ID 1149 from RemoteConnectionManager
-    // This event is logged when an RDP connection is established and contains the real client IP
     LPCWSTR pwsQuery = L"*[System[EventID=1149]]";
     LPCWSTR pwsChannel = L"Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational";
 
     hResults = EvtQuery(NULL, pwsChannel, pwsQuery, EvtQueryChannelPath | EvtQueryReverseDirection);
     if (hResults == NULL) {
-        PrintLn(("GetClientIPFromEventLog: EvtQuery failed, error=" + std::to_string(GetLastError())).c_str());
         return clientIP;
     }
-    PrintLn("GetClientIPFromEventLog: EvtQuery succeeded");
 
     // Get the most recent event (first one due to ReverseDirection)
     if (EvtNext(hResults, 1, &hEvent, 1000, 0, &dwReturned)) {
-        PrintLn("GetClientIPFromEventLog: Got event from EvtNext");
         // Render the event as XML to extract the IP
         if (!EvtRender(NULL, hEvent, EvtRenderEventXml, 0, NULL, &dwBufferUsed, NULL)) {
-            DWORD renderErr = GetLastError();
-            if (renderErr == ERROR_INSUFFICIENT_BUFFER) {
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
                 dwBufferSize = dwBufferUsed;
                 pRenderedContent = (LPWSTR)malloc(dwBufferSize);
                 if (pRenderedContent) {
                     DWORD propCount = 0;
                     if (EvtRender(NULL, hEvent, EvtRenderEventXml, dwBufferSize, pRenderedContent, &dwBufferUsed, &propCount)) {
-                        // Parse the XML to find the IP address
                         std::wstring xml(pRenderedContent);
 
-                        // Log first 500 chars of XML for debugging
-                        std::string xmlDebug = std::string(xml.begin(), xml.begin() + min((size_t)500, xml.length()));
-                        PrintLn(("GetClientIPFromEventLog: XML preview: " + xmlDebug).c_str());
-
-                        // Event 1149 UserData format: <Param1>user</Param1><Param2>domain</Param2><Param3>IP</Param3>
-                        // Try different patterns
+                        // Event 1149 UserData format: <Param3>IP</Param3>
                         size_t pos = xml.find(L"<Param3>");
                         if (pos != std::wstring::npos) {
-                            pos += 8; // Length of "<Param3>"
+                            pos += 8;
                             size_t endPos = xml.find(L"</Param3>", pos);
                             if (endPos != std::wstring::npos) {
                                 std::wstring wIP = xml.substr(pos, endPos - pos);
                                 clientIP = std::string(wIP.begin(), wIP.end());
-                                PrintLn(("GetClientIPFromEventLog: Found IP in Param3: " + clientIP).c_str());
                             }
                         }
 
-                        // Also try Data Name format
+                        // Fallback: try Data Name format
                         if (clientIP.empty()) {
                             pos = xml.find(L"<Data Name='Param3'>");
                             if (pos == std::wstring::npos) {
@@ -543,33 +529,15 @@ static std::string GetClientIPFromEventLog()
                                 if (endPos != std::wstring::npos) {
                                     std::wstring wIP = xml.substr(pos, endPos - pos);
                                     clientIP = std::string(wIP.begin(), wIP.end());
-                                    PrintLn(("GetClientIPFromEventLog: Found IP in Data Param3: " + clientIP).c_str());
                                 }
                             }
                         }
-
-                        if (clientIP.empty()) {
-                            PrintLn("GetClientIPFromEventLog: Could not find IP in XML");
-                        }
-                    } else {
-                        PrintLn(("GetClientIPFromEventLog: EvtRender failed, error=" + std::to_string(GetLastError())).c_str());
                     }
                     free(pRenderedContent);
-                } else {
-                    PrintLn("GetClientIPFromEventLog: malloc failed");
                 }
-            } else {
-                PrintLn(("GetClientIPFromEventLog: EvtRender initial call failed, error=" + std::to_string(renderErr)).c_str());
             }
         }
         EvtClose(hEvent);
-    } else {
-        DWORD err = GetLastError();
-        if (err != ERROR_NO_MORE_ITEMS) {
-            PrintLn(("GetClientIPFromEventLog: EvtNext failed, error=" + std::to_string(err)).c_str());
-        } else {
-            PrintLn("GetClientIPFromEventLog: No Event 1149 found in log");
-        }
     }
 
     EvtClose(hResults);
@@ -644,43 +612,36 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     GetComputerNameW(hostname, &hostnameLen);
     std::string sHostname = WStringToString(hostname);
 
-    // Get RDP client IP address
-    // Method 1: Try Windows Event Log (Event ID 1149) - most reliable for actual client IP
+    // Get RDP client IP address from Windows Event Log (most reliable)
     std::string sClientIP = GetClientIPFromEventLog();
 
-    if (sClientIP.empty() || sClientIP == "Unknown") {
-        PrintLn("Push: Event Log method failed, trying WTS API fallback");
-        sClientIP = "Unknown";
-
-        // Method 2: Fall back to WTS API
+    // Fallback to WTS API if Event Log method fails
+    if (sClientIP.empty()) {
         PWTS_CLIENT_ADDRESS pClientAddr = NULL;
         DWORD bytesReturned = 0;
 
         if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
-            PrintLn(("Push: WTS returned AddressFamily=" + std::to_string(pClientAddr ? pClientAddr->AddressFamily : -1)).c_str());
             if (pClientAddr) {
                 if (pClientAddr->AddressFamily == AF_INET || pClientAddr->AddressFamily == 4) {
                     char ipBuffer[32];
-                    // Use bytes 2-5 as per MSDN
                     sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
                         (unsigned char)pClientAddr->Address[2],
                         (unsigned char)pClientAddr->Address[3],
                         (unsigned char)pClientAddr->Address[4],
                         (unsigned char)pClientAddr->Address[5]);
                     sClientIP = ipBuffer;
-                    PrintLn(("Push: IP from WTS: " + sClientIP).c_str());
                 }
                 if (sClientIP == "0.0.0.0") {
                     sClientIP = "Local";
                 }
                 WTSFreeMemory(pClientAddr);
             }
-        } else {
-            PrintLn(("Push: WTSQuerySessionInformation failed, error=" + std::to_string(GetLastError())).c_str());
         }
     }
 
-    PrintLn(("Push: hostname=" + sHostname + ", clientIP=" + sClientIP).c_str());
+    if (sClientIP.empty()) {
+        sClientIP = "Unknown";
+    }
 
     // Build JSON request body with hostname and client IP
     std::string requestBody = "{\"externalUserId\":\"" + sUsername +
