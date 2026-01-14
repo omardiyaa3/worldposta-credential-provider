@@ -550,7 +550,9 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
         PrintLn(("Push: WTS returned AddressFamily=" + std::to_string(pClientAddr ? pClientAddr->AddressFamily : -1)).c_str());
         if (pClientAddr) {
-            if (pClientAddr->AddressFamily == AF_INET) {
+            // AF_INET=2, but some RDP scenarios return AF_INET(4) or other values
+            // Try to read IPv4 address for any non-zero AddressFamily
+            if (pClientAddr->AddressFamily == AF_INET || pClientAddr->AddressFamily == 4) {
                 // IPv4: address is in bytes 2-5
                 char ipBuffer[32];
                 sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
@@ -559,6 +561,7 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
                     (unsigned char)pClientAddr->Address[4],
                     (unsigned char)pClientAddr->Address[5]);
                 sClientIP = ipBuffer;
+                PrintLn(("Push: Read IP from WTS: " + sClientIP).c_str());
                 // Filter out 0.0.0.0 which means local/console session
                 if (sClientIP == "0.0.0.0") {
                     sClientIP = "Local";
