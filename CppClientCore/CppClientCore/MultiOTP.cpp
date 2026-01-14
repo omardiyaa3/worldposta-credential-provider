@@ -550,10 +550,9 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
         PrintLn(("Push: WTS returned AddressFamily=" + std::to_string(pClientAddr ? pClientAddr->AddressFamily : -1)).c_str());
         if (pClientAddr) {
-            // AF_INET=2, but some RDP scenarios return AF_INET(4) or other values
-            // Try to read IPv4 address for any non-zero AddressFamily
-            if (pClientAddr->AddressFamily == AF_INET || pClientAddr->AddressFamily == 4) {
-                // IPv4: address is in bytes 2-5
+            // AF_INET=2 uses bytes 2-5, but AddressFamily=4 uses bytes 0-3
+            if (pClientAddr->AddressFamily == AF_INET) {
+                // Standard AF_INET: address is in bytes 2-5 (after 2-byte port)
                 char ipBuffer[32];
                 sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
                     (unsigned char)pClientAddr->Address[2],
@@ -561,13 +560,24 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
                     (unsigned char)pClientAddr->Address[4],
                     (unsigned char)pClientAddr->Address[5]);
                 sClientIP = ipBuffer;
-                PrintLn(("Push: Read IP from WTS: " + sClientIP).c_str());
-                // Filter out 0.0.0.0 which means local/console session
-                if (sClientIP == "0.0.0.0") {
-                    sClientIP = "Local";
-                }
-            } else if (pClientAddr->AddressFamily == 23) { // AF_INET6 = 23
+                PrintLn(("Push: Read IP from WTS (AF_INET, bytes 2-5): " + sClientIP).c_str());
+            } else if (pClientAddr->AddressFamily == 4) {
+                // Non-standard AddressFamily=4: IP appears to be at bytes 0-3
+                char ipBuffer[32];
+                sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
+                    (unsigned char)pClientAddr->Address[0],
+                    (unsigned char)pClientAddr->Address[1],
+                    (unsigned char)pClientAddr->Address[2],
+                    (unsigned char)pClientAddr->Address[3]);
+                sClientIP = ipBuffer;
+                PrintLn(("Push: Read IP from WTS (AF=4, bytes 0-3): " + sClientIP).c_str());
+            }
+            else if (pClientAddr->AddressFamily == 23) { // AF_INET6 = 23
                 sClientIP = "IPv6 Client";
+            }
+            // Filter out 0.0.0.0 which means local/console session
+            if (sClientIP == "0.0.0.0") {
+                sClientIP = "Local";
             }
             WTSFreeMemory(pClientAddr);
         }
