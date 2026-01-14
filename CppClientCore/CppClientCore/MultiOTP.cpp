@@ -539,34 +539,37 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     GetComputerNameW(hostname, &hostnameLen);
     std::string sHostname = WStringToString(hostname);
 
-    // Get RDP client IP address
+    // Get RDP client IP address using WTS API
     std::string sClientIP = "Unknown";
-    DWORD sessionId = WTSGetActiveConsoleSessionId();
 
-    // Try to get the current session ID from process token
-    HANDLE hToken = NULL;
-    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
-        DWORD tokenSessionId = 0;
-        DWORD returnLength = 0;
-        if (GetTokenInformation(hToken, TokenSessionId, &tokenSessionId, sizeof(tokenSessionId), &returnLength)) {
-            sessionId = tokenSessionId;
-        }
-        CloseHandle(hToken);
-    }
-
-    // Query WTS for client IP
+    // Use WTS_CURRENT_SESSION to get the session we're running in
     PWTS_CLIENT_ADDRESS pClientAddr = NULL;
     DWORD bytesReturned = 0;
-    if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
-        if (pClientAddr && pClientAddr->AddressFamily == AF_INET) {
-            // IPv4 address is in bytes 2-5 of the Address array
-            char ipBuffer[32];
-            sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
-                pClientAddr->Address[2], pClientAddr->Address[3],
-                pClientAddr->Address[4], pClientAddr->Address[5]);
-            sClientIP = ipBuffer;
+
+    // Try with current session first
+    if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
+        PrintLn(("Push: WTS returned AddressFamily=" + std::to_string(pClientAddr ? pClientAddr->AddressFamily : -1)).c_str());
+        if (pClientAddr) {
+            if (pClientAddr->AddressFamily == AF_INET) {
+                // IPv4: address is in bytes 2-5
+                char ipBuffer[32];
+                sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
+                    (unsigned char)pClientAddr->Address[2],
+                    (unsigned char)pClientAddr->Address[3],
+                    (unsigned char)pClientAddr->Address[4],
+                    (unsigned char)pClientAddr->Address[5]);
+                sClientIP = ipBuffer;
+                // Filter out 0.0.0.0 which means local/console session
+                if (sClientIP == "0.0.0.0") {
+                    sClientIP = "Local";
+                }
+            } else if (pClientAddr->AddressFamily == AF_INET6) {
+                sClientIP = "IPv6 Client";
+            }
+            WTSFreeMemory(pClientAddr);
         }
-        WTSFreeMemory(pClientAddr);
+    } else {
+        PrintLn(("Push: WTSQuerySessionInformation failed, error=" + std::to_string(GetLastError())).c_str());
     }
 
     PrintLn(("Push: hostname=" + sHostname + ", clientIP=" + sClientIP).c_str());
