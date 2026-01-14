@@ -41,8 +41,8 @@ CProvider::CProvider() :
 	DllAddRef();
 
 	_config = std::make_shared<MultiOTPConfiguration>();
-	// Always enable release logging for troubleshooting - don't override to false
-	Logger::Get().releaseLog = true;  // Force enabled regardless of registry
+	// Disable release logging in production
+	Logger::Get().releaseLog = false;
 }
 
 CProvider::~CProvider()
