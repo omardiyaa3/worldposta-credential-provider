@@ -563,7 +563,7 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
                 if (sClientIP == "0.0.0.0") {
                     sClientIP = "Local";
                 }
-            } else if (pClientAddr->AddressFamily == AF_INET6) {
+            } else if (pClientAddr->AddressFamily == 23) { // AF_INET6 = 23
                 sClientIP = "IPv6 Client";
             }
             WTSFreeMemory(pClientAddr);
