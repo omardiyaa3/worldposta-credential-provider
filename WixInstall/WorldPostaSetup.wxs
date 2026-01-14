@@ -20,6 +20,10 @@
     <MajorUpgrade DowngradeErrorMessage="A newer version is already installed."/>
     <MediaTemplate EmbedCab="yes"/>
 
+    <!-- WorldPosta branding images -->
+    <WixVariable Id="WixUIBannerBmp" Value="..\ico\WixUIBannerBmp.bmp"/>
+    <WixVariable Id="WixUIDialogBmp" Value="..\ico\WixUIDialogBmp.bmp"/>
+
     <Condition Message="You need to be an administrator to install this product.">
       Privileged
     </Condition>
@@ -29,7 +33,7 @@
     </Condition>
 
     <!-- Properties for API configuration -->
-    <Property Id="WORLDPOSTA_ENDPOINT" Value="https://api.worldposta.com"/>
+    <Property Id="WORLDPOSTA_ENDPOINT" Value="https://authenticator-api.worldposta.com"/>
     <Property Id="WORLDPOSTA_INTEGRATION_KEY" Secure="yes"/>
     <Property Id="WORLDPOSTA_SECRET_KEY" Hidden="yes" Secure="yes"/>
     <!-- CPUS values: 0=fully enabled, 1=remote-only, 2=local-only, 3=disabled. Suffix 'e' enables filter, 'd' disables filter -->
