@@ -981,11 +981,12 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
             enteredCode.clear();
 
             // Create edit control - centered in dialog
+            // Use ES_MULTILINE to enable vertical text centering via EM_SETRECT
             hEdit = CreateWindowExW(
                 0,
                 L"EDIT",
                 L"",
-                WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_CENTER | ES_NUMBER,
+                WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_CENTER | ES_NUMBER | ES_MULTILINE,
                 50, 320,
                 OTP_DLG_WIDTH - 100, 50,
                 hwnd, (HMENU)IDC_OTP_EDIT, NULL, NULL
@@ -995,6 +996,16 @@ static LRESULT CALLBACK OTPDialogWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPA
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Segoe UI");
             SendMessage(hEdit, WM_SETFONT, (WPARAM)editFont, TRUE);
+
+            // Vertically center text by setting a custom formatting rectangle
+            // Edit control height is 50, font is 32, so add (50-32)/2 = 9 pixels top padding
+            RECT editRect;
+            GetClientRect(hEdit, &editRect);
+            editRect.top = 9;  // Top padding to vertically center 32px font in 50px box
+            editRect.left = 5;
+            editRect.right -= 5;
+            SendMessage(hEdit, EM_SETRECT, 0, (LPARAM)&editRect);
+
             SetFocus(hEdit);
 
             // Verify button
