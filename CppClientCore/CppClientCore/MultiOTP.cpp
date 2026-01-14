@@ -485,6 +485,8 @@ static std::string GetClientIPFromEventLog()
     DWORD dwBufferUsed = 0;
     LPWSTR pRenderedContent = NULL;
 
+    PrintLn("GetClientIPFromEventLog: Starting Event Log query");
+
     // Query the most recent Event ID 1149 from RemoteConnectionManager
     // This event is logged when an RDP connection is established and contains the real client IP
     LPCWSTR pwsQuery = L"*[System[EventID=1149]]";
@@ -495,38 +497,69 @@ static std::string GetClientIPFromEventLog()
         PrintLn(("GetClientIPFromEventLog: EvtQuery failed, error=" + std::to_string(GetLastError())).c_str());
         return clientIP;
     }
+    PrintLn("GetClientIPFromEventLog: EvtQuery succeeded");
 
     // Get the most recent event (first one due to ReverseDirection)
     if (EvtNext(hResults, 1, &hEvent, 1000, 0, &dwReturned)) {
+        PrintLn("GetClientIPFromEventLog: Got event from EvtNext");
         // Render the event as XML to extract the IP
         if (!EvtRender(NULL, hEvent, EvtRenderEventXml, 0, NULL, &dwBufferUsed, NULL)) {
-            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+            DWORD renderErr = GetLastError();
+            if (renderErr == ERROR_INSUFFICIENT_BUFFER) {
                 dwBufferSize = dwBufferUsed;
                 pRenderedContent = (LPWSTR)malloc(dwBufferSize);
                 if (pRenderedContent) {
-                    if (EvtRender(NULL, hEvent, EvtRenderEventXml, dwBufferSize, pRenderedContent, &dwBufferUsed, NULL)) {
+                    DWORD propCount = 0;
+                    if (EvtRender(NULL, hEvent, EvtRenderEventXml, dwBufferSize, pRenderedContent, &dwBufferUsed, &propCount)) {
                         // Parse the XML to find the IP address
-                        // Event 1149 contains: <Data Name="Param3">IP_ADDRESS</Data>
                         std::wstring xml(pRenderedContent);
 
-                        // Look for Param3 which contains the source IP
-                        size_t pos = xml.find(L"<Data Name='Param3'>");
-                        if (pos == std::wstring::npos) {
-                            pos = xml.find(L"<Data Name=\"Param3\">");
-                        }
+                        // Log first 500 chars of XML for debugging
+                        std::string xmlDebug = std::string(xml.begin(), xml.begin() + min((size_t)500, xml.length()));
+                        PrintLn(("GetClientIPFromEventLog: XML preview: " + xmlDebug).c_str());
+
+                        // Event 1149 UserData format: <Param1>user</Param1><Param2>domain</Param2><Param3>IP</Param3>
+                        // Try different patterns
+                        size_t pos = xml.find(L"<Param3>");
                         if (pos != std::wstring::npos) {
-                            pos += 20; // Length of "<Data Name='Param3'>"
-                            size_t endPos = xml.find(L"</Data>", pos);
+                            pos += 8; // Length of "<Param3>"
+                            size_t endPos = xml.find(L"</Param3>", pos);
                             if (endPos != std::wstring::npos) {
                                 std::wstring wIP = xml.substr(pos, endPos - pos);
-                                // Convert to string
                                 clientIP = std::string(wIP.begin(), wIP.end());
-                                PrintLn(("GetClientIPFromEventLog: Found IP from Event 1149: " + clientIP).c_str());
+                                PrintLn(("GetClientIPFromEventLog: Found IP in Param3: " + clientIP).c_str());
                             }
                         }
+
+                        // Also try Data Name format
+                        if (clientIP.empty()) {
+                            pos = xml.find(L"<Data Name='Param3'>");
+                            if (pos == std::wstring::npos) {
+                                pos = xml.find(L"<Data Name=\"Param3\">");
+                            }
+                            if (pos != std::wstring::npos) {
+                                pos += 20;
+                                size_t endPos = xml.find(L"</Data>", pos);
+                                if (endPos != std::wstring::npos) {
+                                    std::wstring wIP = xml.substr(pos, endPos - pos);
+                                    clientIP = std::string(wIP.begin(), wIP.end());
+                                    PrintLn(("GetClientIPFromEventLog: Found IP in Data Param3: " + clientIP).c_str());
+                                }
+                            }
+                        }
+
+                        if (clientIP.empty()) {
+                            PrintLn("GetClientIPFromEventLog: Could not find IP in XML");
+                        }
+                    } else {
+                        PrintLn(("GetClientIPFromEventLog: EvtRender failed, error=" + std::to_string(GetLastError())).c_str());
                     }
                     free(pRenderedContent);
+                } else {
+                    PrintLn("GetClientIPFromEventLog: malloc failed");
                 }
+            } else {
+                PrintLn(("GetClientIPFromEventLog: EvtRender initial call failed, error=" + std::to_string(renderErr)).c_str());
             }
         }
         EvtClose(hEvent);
