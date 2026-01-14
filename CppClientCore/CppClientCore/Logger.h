@@ -54,7 +54,7 @@ public:
 
 	void log(const SecureWString& message, const char* file, int line, bool logInProduction);
 
-	bool releaseLog = true;  // Enable logging by default for troubleshooting
+	bool releaseLog = false;  // Disable logging in production
 
 private:
 	Logger() = default;

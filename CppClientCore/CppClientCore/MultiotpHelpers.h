@@ -65,10 +65,10 @@
 #define SKIP_OTP_CHECK FALSE // Available in development only, ignore the OTP code check
 #define LOGFILE_NAME MULTIOTP_DEBUG_LOGFILE_NAME
 #else
-// FORCE LOGGING ENABLED for troubleshooting
-#define DEBUG_MODE TRUE
+// Production release - logging disabled
+#define DEBUG_MODE FALSE
 #define DISPLAY_DEBUG_BOX FALSE
-#define DEVELOP_MODE TRUE // Enable logging in release builds
+#define DEVELOP_MODE FALSE
 #define SKIP_OTP_CHECK FALSE
 #define LOGFILE_NAME MULTIOTP_RELEASE_LOGFILE_NAME
 #endif
