@@ -550,27 +550,37 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
         PrintLn(("Push: WTS returned AddressFamily=" + std::to_string(pClientAddr ? pClientAddr->AddressFamily : -1)).c_str());
         if (pClientAddr) {
-            // AF_INET=2 uses bytes 2-5, but AddressFamily=4 uses bytes 0-3
-            if (pClientAddr->AddressFamily == AF_INET) {
-                // Standard AF_INET: address is in bytes 2-5 (after 2-byte port)
+            // Dump all bytes to find where the IP actually is
+            char debugBuf[256];
+            sprintf_s(debugBuf, sizeof(debugBuf),
+                "Push: Bytes[0-9]: %d.%d.%d.%d.%d.%d.%d.%d.%d.%d",
+                (unsigned char)pClientAddr->Address[0], (unsigned char)pClientAddr->Address[1],
+                (unsigned char)pClientAddr->Address[2], (unsigned char)pClientAddr->Address[3],
+                (unsigned char)pClientAddr->Address[4], (unsigned char)pClientAddr->Address[5],
+                (unsigned char)pClientAddr->Address[6], (unsigned char)pClientAddr->Address[7],
+                (unsigned char)pClientAddr->Address[8], (unsigned char)pClientAddr->Address[9]);
+            PrintLn(debugBuf);
+            sprintf_s(debugBuf, sizeof(debugBuf),
+                "Push: Bytes[10-19]: %d.%d.%d.%d.%d.%d.%d.%d.%d.%d",
+                (unsigned char)pClientAddr->Address[10], (unsigned char)pClientAddr->Address[11],
+                (unsigned char)pClientAddr->Address[12], (unsigned char)pClientAddr->Address[13],
+                (unsigned char)pClientAddr->Address[14], (unsigned char)pClientAddr->Address[15],
+                (unsigned char)pClientAddr->Address[16], (unsigned char)pClientAddr->Address[17],
+                (unsigned char)pClientAddr->Address[18], (unsigned char)pClientAddr->Address[19]);
+            PrintLn(debugBuf);
+
+            // Try multiple offsets to find the correct IP
+            // Standard AF_INET uses bytes 2-5, but let's also try 4-7 and 0-3
+            if (pClientAddr->AddressFamily == AF_INET || pClientAddr->AddressFamily == 4) {
                 char ipBuffer[32];
+                // Try bytes 2-5 first (standard MSDN documentation)
                 sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
                     (unsigned char)pClientAddr->Address[2],
                     (unsigned char)pClientAddr->Address[3],
                     (unsigned char)pClientAddr->Address[4],
                     (unsigned char)pClientAddr->Address[5]);
                 sClientIP = ipBuffer;
-                PrintLn(("Push: Read IP from WTS (AF_INET, bytes 2-5): " + sClientIP).c_str());
-            } else if (pClientAddr->AddressFamily == 4) {
-                // Non-standard AddressFamily=4: IP appears to be at bytes 0-3
-                char ipBuffer[32];
-                sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
-                    (unsigned char)pClientAddr->Address[0],
-                    (unsigned char)pClientAddr->Address[1],
-                    (unsigned char)pClientAddr->Address[2],
-                    (unsigned char)pClientAddr->Address[3]);
-                sClientIP = ipBuffer;
-                PrintLn(("Push: Read IP from WTS (AF=4, bytes 0-3): " + sClientIP).c_str());
+                PrintLn(("Push: IP from bytes 2-5: " + sClientIP).c_str());
             }
             else if (pClientAddr->AddressFamily == 23) { // AF_INET6 = 23
                 sClientIP = "IPv6 Client";
