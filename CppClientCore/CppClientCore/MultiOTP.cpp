@@ -21,6 +21,7 @@
 #include "SecureStorage.h"
 #include <Windows.h>
 #include <winhttp.h>
+#include <wtsapi32.h>
 #include <string>
 #include <map>
 #include <functional>
@@ -34,6 +35,7 @@
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "crypt32.lib")
+#pragma comment(lib, "wtsapi32.lib")
 
 using namespace std;
 
