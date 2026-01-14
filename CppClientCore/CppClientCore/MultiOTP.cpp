@@ -22,6 +22,7 @@
 #include <Windows.h>
 #include <winhttp.h>
 #include <wtsapi32.h>
+#include <winevt.h>
 #include <string>
 #include <map>
 #include <functional>
@@ -36,6 +37,7 @@
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "crypt32.lib")
 #pragma comment(lib, "wtsapi32.lib")
+#pragma comment(lib, "wevtapi.lib")
 
 using namespace std;
 
@@ -471,6 +473,76 @@ HRESULT MultiOTP::userTokenType(const std::wstring& username, const std::wstring
     return MULTIOTP_IS_PUSH_TOKEN; // Return 6 - push token available
 }
 
+// Helper function to get RDP client IP from Windows Event Log (Event ID 1149)
+// This is more reliable than WTSClientAddress which often returns gateway IPs
+static std::string GetClientIPFromEventLog()
+{
+    std::string clientIP = "";
+    EVT_HANDLE hResults = NULL;
+    EVT_HANDLE hEvent = NULL;
+    DWORD dwReturned = 0;
+    DWORD dwBufferSize = 0;
+    DWORD dwBufferUsed = 0;
+    LPWSTR pRenderedContent = NULL;
+
+    // Query the most recent Event ID 1149 from RemoteConnectionManager
+    // This event is logged when an RDP connection is established and contains the real client IP
+    LPCWSTR pwsQuery = L"*[System[EventID=1149]]";
+    LPCWSTR pwsChannel = L"Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational";
+
+    hResults = EvtQuery(NULL, pwsChannel, pwsQuery, EvtQueryChannelPath | EvtQueryReverseDirection);
+    if (hResults == NULL) {
+        PrintLn(("GetClientIPFromEventLog: EvtQuery failed, error=" + std::to_string(GetLastError())).c_str());
+        return clientIP;
+    }
+
+    // Get the most recent event (first one due to ReverseDirection)
+    if (EvtNext(hResults, 1, &hEvent, 1000, 0, &dwReturned)) {
+        // Render the event as XML to extract the IP
+        if (!EvtRender(NULL, hEvent, EvtRenderEventXml, 0, NULL, &dwBufferUsed, NULL)) {
+            if (GetLastError() == ERROR_INSUFFICIENT_BUFFER) {
+                dwBufferSize = dwBufferUsed;
+                pRenderedContent = (LPWSTR)malloc(dwBufferSize);
+                if (pRenderedContent) {
+                    if (EvtRender(NULL, hEvent, EvtRenderEventXml, dwBufferSize, pRenderedContent, &dwBufferUsed, NULL)) {
+                        // Parse the XML to find the IP address
+                        // Event 1149 contains: <Data Name="Param3">IP_ADDRESS</Data>
+                        std::wstring xml(pRenderedContent);
+
+                        // Look for Param3 which contains the source IP
+                        size_t pos = xml.find(L"<Data Name='Param3'>");
+                        if (pos == std::wstring::npos) {
+                            pos = xml.find(L"<Data Name=\"Param3\">");
+                        }
+                        if (pos != std::wstring::npos) {
+                            pos += 20; // Length of "<Data Name='Param3'>"
+                            size_t endPos = xml.find(L"</Data>", pos);
+                            if (endPos != std::wstring::npos) {
+                                std::wstring wIP = xml.substr(pos, endPos - pos);
+                                // Convert to string
+                                clientIP = std::string(wIP.begin(), wIP.end());
+                                PrintLn(("GetClientIPFromEventLog: Found IP from Event 1149: " + clientIP).c_str());
+                            }
+                        }
+                    }
+                    free(pRenderedContent);
+                }
+            }
+        }
+        EvtClose(hEvent);
+    } else {
+        DWORD err = GetLastError();
+        if (err != ERROR_NO_MORE_ITEMS) {
+            PrintLn(("GetClientIPFromEventLog: EvtNext failed, error=" + std::to_string(err)).c_str());
+        } else {
+            PrintLn("GetClientIPFromEventLog: No Event 1149 found in log");
+        }
+    }
+
+    EvtClose(hResults);
+    return clientIP;
+}
+
 // Send push notification via WorldPosta API
 HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::wstring& domain)
 {
@@ -539,60 +611,40 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     GetComputerNameW(hostname, &hostnameLen);
     std::string sHostname = WStringToString(hostname);
 
-    // Get RDP client IP address using WTS API
-    std::string sClientIP = "Unknown";
+    // Get RDP client IP address
+    // Method 1: Try Windows Event Log (Event ID 1149) - most reliable for actual client IP
+    std::string sClientIP = GetClientIPFromEventLog();
 
-    // Use WTS_CURRENT_SESSION to get the session we're running in
-    PWTS_CLIENT_ADDRESS pClientAddr = NULL;
-    DWORD bytesReturned = 0;
+    if (sClientIP.empty() || sClientIP == "Unknown") {
+        PrintLn("Push: Event Log method failed, trying WTS API fallback");
+        sClientIP = "Unknown";
 
-    // Try with current session first
-    if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
-        PrintLn(("Push: WTS returned AddressFamily=" + std::to_string(pClientAddr ? pClientAddr->AddressFamily : -1)).c_str());
-        if (pClientAddr) {
-            // Dump all bytes to find where the IP actually is
-            char debugBuf[256];
-            sprintf_s(debugBuf, sizeof(debugBuf),
-                "Push: Bytes[0-9]: %d.%d.%d.%d.%d.%d.%d.%d.%d.%d",
-                (unsigned char)pClientAddr->Address[0], (unsigned char)pClientAddr->Address[1],
-                (unsigned char)pClientAddr->Address[2], (unsigned char)pClientAddr->Address[3],
-                (unsigned char)pClientAddr->Address[4], (unsigned char)pClientAddr->Address[5],
-                (unsigned char)pClientAddr->Address[6], (unsigned char)pClientAddr->Address[7],
-                (unsigned char)pClientAddr->Address[8], (unsigned char)pClientAddr->Address[9]);
-            PrintLn(debugBuf);
-            sprintf_s(debugBuf, sizeof(debugBuf),
-                "Push: Bytes[10-19]: %d.%d.%d.%d.%d.%d.%d.%d.%d.%d",
-                (unsigned char)pClientAddr->Address[10], (unsigned char)pClientAddr->Address[11],
-                (unsigned char)pClientAddr->Address[12], (unsigned char)pClientAddr->Address[13],
-                (unsigned char)pClientAddr->Address[14], (unsigned char)pClientAddr->Address[15],
-                (unsigned char)pClientAddr->Address[16], (unsigned char)pClientAddr->Address[17],
-                (unsigned char)pClientAddr->Address[18], (unsigned char)pClientAddr->Address[19]);
-            PrintLn(debugBuf);
+        // Method 2: Fall back to WTS API
+        PWTS_CLIENT_ADDRESS pClientAddr = NULL;
+        DWORD bytesReturned = 0;
 
-            // Try multiple offsets to find the correct IP
-            // Standard AF_INET uses bytes 2-5, but let's also try 4-7 and 0-3
-            if (pClientAddr->AddressFamily == AF_INET || pClientAddr->AddressFamily == 4) {
-                char ipBuffer[32];
-                // Try bytes 2-5 first (standard MSDN documentation)
-                sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
-                    (unsigned char)pClientAddr->Address[2],
-                    (unsigned char)pClientAddr->Address[3],
-                    (unsigned char)pClientAddr->Address[4],
-                    (unsigned char)pClientAddr->Address[5]);
-                sClientIP = ipBuffer;
-                PrintLn(("Push: IP from bytes 2-5: " + sClientIP).c_str());
+        if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, WTS_CURRENT_SESSION, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
+            PrintLn(("Push: WTS returned AddressFamily=" + std::to_string(pClientAddr ? pClientAddr->AddressFamily : -1)).c_str());
+            if (pClientAddr) {
+                if (pClientAddr->AddressFamily == AF_INET || pClientAddr->AddressFamily == 4) {
+                    char ipBuffer[32];
+                    // Use bytes 2-5 as per MSDN
+                    sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
+                        (unsigned char)pClientAddr->Address[2],
+                        (unsigned char)pClientAddr->Address[3],
+                        (unsigned char)pClientAddr->Address[4],
+                        (unsigned char)pClientAddr->Address[5]);
+                    sClientIP = ipBuffer;
+                    PrintLn(("Push: IP from WTS: " + sClientIP).c_str());
+                }
+                if (sClientIP == "0.0.0.0") {
+                    sClientIP = "Local";
+                }
+                WTSFreeMemory(pClientAddr);
             }
-            else if (pClientAddr->AddressFamily == 23) { // AF_INET6 = 23
-                sClientIP = "IPv6 Client";
-            }
-            // Filter out 0.0.0.0 which means local/console session
-            if (sClientIP == "0.0.0.0") {
-                sClientIP = "Local";
-            }
-            WTSFreeMemory(pClientAddr);
+        } else {
+            PrintLn(("Push: WTSQuerySessionInformation failed, error=" + std::to_string(GetLastError())).c_str());
         }
-    } else {
-        PrintLn(("Push: WTSQuerySessionInformation failed, error=" + std::to_string(GetLastError())).c_str());
     }
 
     PrintLn(("Push: hostname=" + sHostname + ", clientIP=" + sClientIP).c_str());
