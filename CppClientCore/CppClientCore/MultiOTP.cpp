@@ -531,10 +531,49 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
     std::wstring cleanUsername = getCleanUsername(username, domain);
     std::string sUsername = WStringToString(cleanUsername);
 
-    // Build JSON request body
+    // Get hostname
+    wchar_t hostname[256] = {0};
+    DWORD hostnameLen = 256;
+    GetComputerNameW(hostname, &hostnameLen);
+    std::string sHostname = WStringToString(hostname);
+
+    // Get RDP client IP address
+    std::string sClientIP = "Unknown";
+    DWORD sessionId = WTSGetActiveConsoleSessionId();
+
+    // Try to get the current session ID from process token
+    HANDLE hToken = NULL;
+    if (OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &hToken)) {
+        DWORD tokenSessionId = 0;
+        DWORD returnLength = 0;
+        if (GetTokenInformation(hToken, TokenSessionId, &tokenSessionId, sizeof(tokenSessionId), &returnLength)) {
+            sessionId = tokenSessionId;
+        }
+        CloseHandle(hToken);
+    }
+
+    // Query WTS for client IP
+    PWTS_CLIENT_ADDRESS pClientAddr = NULL;
+    DWORD bytesReturned = 0;
+    if (WTSQuerySessionInformationW(WTS_CURRENT_SERVER_HANDLE, sessionId, WTSClientAddress, (LPWSTR*)&pClientAddr, &bytesReturned)) {
+        if (pClientAddr && pClientAddr->AddressFamily == AF_INET) {
+            // IPv4 address is in bytes 2-5 of the Address array
+            char ipBuffer[32];
+            sprintf_s(ipBuffer, sizeof(ipBuffer), "%d.%d.%d.%d",
+                pClientAddr->Address[2], pClientAddr->Address[3],
+                pClientAddr->Address[4], pClientAddr->Address[5]);
+            sClientIP = ipBuffer;
+        }
+        WTSFreeMemory(pClientAddr);
+    }
+
+    PrintLn(("Push: hostname=" + sHostname + ", clientIP=" + sClientIP).c_str());
+
+    // Build JSON request body with hostname and client IP
     std::string requestBody = "{\"externalUserId\":\"" + sUsername +
                               "\",\"serviceName\":\"Windows RDP Login\"" +
-                              ",\"deviceInfo\":\"Windows Credential Provider\"}";
+                              ",\"deviceInfo\":\"" + sHostname + "\"" +
+                              ",\"ipAddress\":\"" + sClientIP + "\"}";
 
     PrintLn(("Push: calling API /v1/push/send for user " + sUsername).c_str());
     PrintLn(L"Push: endpoint = ", wsEndpoint.c_str());
