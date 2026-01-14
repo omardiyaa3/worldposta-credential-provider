@@ -304,10 +304,10 @@ HRESULT MultiOTP::validateCheck(const std::wstring& username, const std::wstring
 
     // Try to read encrypted keys first (secure storage)
     wsIntegrationKey = SecureStorage::ReadEncryptedRegistryValue(
-        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        HKEY_CLASSES_ROOT, L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}",
         L"worldposta_integration_key_enc");
     wsSecretKey = SecureStorage::ReadEncryptedRegistryValue(
-        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        HKEY_CLASSES_ROOT, L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}",
         L"worldposta_secret_key_enc");
 
     // Fall back to plaintext if encrypted not found (for migration)
@@ -488,10 +488,10 @@ HRESULT MultiOTP::sendPushNotification(const std::wstring& username, const std::
 
     // Try to read encrypted keys first (secure storage)
     wsIntegrationKey = SecureStorage::ReadEncryptedRegistryValue(
-        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        HKEY_CLASSES_ROOT, L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}",
         L"worldposta_integration_key_enc");
     wsSecretKey = SecureStorage::ReadEncryptedRegistryValue(
-        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        HKEY_CLASSES_ROOT, L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}",
         L"worldposta_secret_key_enc");
 
     PrintLn(("Push: encrypted keys - ik:" + std::to_string(wsIntegrationKey.length()) +
@@ -626,10 +626,10 @@ HRESULT MultiOTP::checkPushStatus()
 
     // Try to read encrypted keys first (secure storage)
     wsIntegrationKey = SecureStorage::ReadEncryptedRegistryValue(
-        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        HKEY_CLASSES_ROOT, L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}",
         L"worldposta_integration_key_enc");
     wsSecretKey = SecureStorage::ReadEncryptedRegistryValue(
-        HKEY_CLASSES_ROOT, L"CLSID\\{FCEFDFAB-B0A1-4C4D-8B2B-4FF4E0A3D978}",
+        HKEY_CLASSES_ROOT, L"CLSID\\{11A4894C-0968-40D0-840E-FAA4B8984916}",
         L"worldposta_secret_key_enc");
 
     // Fall back to plaintext if encrypted not found (for migration)
