@@ -203,36 +203,38 @@ int api_send_push(const worldposta_config_t *config, const char *username,
                   const char *client_ip, const char *hostname,
                   char *request_id, size_t request_id_len) {
     response_buffer_t response = {0};
-    struct json_object *request, *resp_obj, *id_obj;
-    const char *body;
+    char body[1024];
     int result = -1;
+    char *req_start, *req_end;
 
-    /* Build request JSON */
-    request = json_object_new_object();
-    json_object_object_add(request, "externalUserId", json_object_new_string(username));
-    json_object_object_add(request, "serviceName", json_object_new_string(config->service_name));
-    json_object_object_add(request, "deviceInfo", json_object_new_string(hostname));
-    json_object_object_add(request, "ipAddress", json_object_new_string(client_ip ? client_ip : "unknown"));
-    body = json_object_to_json_string(request);
+    /* Build request JSON - use simple formatting to avoid signature issues */
+    snprintf(body, sizeof(body),
+        "{\"externalUserId\":\"%s\",\"serviceName\":\"%s\",\"deviceInfo\":\"%s\",\"ipAddress\":\"%s\"}",
+        username,
+        config->service_name,
+        hostname,
+        client_ip ? client_ip : "unknown");
 
     /* Send request */
     if (http_post(config, "/v1/push/send", body, &response) == 0) {
-        /* Parse response for requestId */
-        resp_obj = json_tokener_parse(response.data);
-        if (resp_obj) {
-            if (json_object_object_get_ex(resp_obj, "requestId", &id_obj)) {
-                const char *id = json_object_get_string(id_obj);
-                if (id) {
-                    strncpy(request_id, id, request_id_len - 1);
-                    request_id[request_id_len - 1] = '\0';
-                    result = 0;
+        /* Parse response for requestId using simple string search */
+        if (response.data) {
+            req_start = strstr(response.data, "\"requestId\":\"");
+            if (req_start) {
+                req_start += 13; /* Skip past "requestId":" */
+                req_end = strchr(req_start, '"');
+                if (req_end) {
+                    size_t len = req_end - req_start;
+                    if (len < request_id_len) {
+                        strncpy(request_id, req_start, len);
+                        request_id[len] = '\0';
+                        result = 0;
+                    }
                 }
             }
-            json_object_put(resp_obj);
         }
     }
 
-    json_object_put(request);
     free(response.data);
 
     return result;
