@@ -242,30 +242,27 @@ int api_send_push(const worldposta_config_t *config, const char *username,
 
 int api_check_push_status(const worldposta_config_t *config, const char *request_id) {
     response_buffer_t response = {0};
-    struct json_object *resp_obj, *status_obj;
     char endpoint[256];
     int result = PUSH_STATUS_ERROR;
 
     snprintf(endpoint, sizeof(endpoint), "/v1/push/status/%s", request_id);
 
     if (http_get(config, endpoint, &response) == 0) {
-        resp_obj = json_tokener_parse(response.data);
-        if (resp_obj) {
-            if (json_object_object_get_ex(resp_obj, "status", &status_obj)) {
-                const char *status = json_object_get_string(status_obj);
-                if (status) {
-                    if (strcasecmp(status, "approved") == 0) {
-                        result = PUSH_STATUS_APPROVED;
-                    } else if (strcasecmp(status, "denied") == 0) {
-                        result = PUSH_STATUS_DENIED;
-                    } else if (strcasecmp(status, "expired") == 0) {
-                        result = PUSH_STATUS_EXPIRED;
-                    } else if (strcasecmp(status, "pending") == 0) {
-                        result = PUSH_STATUS_PENDING;
-                    }
-                }
+        /* Parse response using simple string search */
+        if (response.data) {
+            if (strstr(response.data, "\"status\":\"approved\"") ||
+                strstr(response.data, "\"status\": \"approved\"")) {
+                result = PUSH_STATUS_APPROVED;
+            } else if (strstr(response.data, "\"status\":\"denied\"") ||
+                       strstr(response.data, "\"status\": \"denied\"")) {
+                result = PUSH_STATUS_DENIED;
+            } else if (strstr(response.data, "\"status\":\"expired\"") ||
+                       strstr(response.data, "\"status\": \"expired\"")) {
+                result = PUSH_STATUS_EXPIRED;
+            } else if (strstr(response.data, "\"status\":\"pending\"") ||
+                       strstr(response.data, "\"status\": \"pending\"")) {
+                result = PUSH_STATUS_PENDING;
             }
-            json_object_put(resp_obj);
         }
     }
 
@@ -274,10 +271,11 @@ int api_check_push_status(const worldposta_config_t *config, const char *request
 }
 
 int api_wait_for_push(const worldposta_config_t *config, const char *request_id, int timeout_seconds) {
-    int elapsed = 0;
+    int polls = 0;
+    int max_polls = timeout_seconds * 2; /* Poll every 500ms = 2 polls per second */
     int status;
 
-    while (elapsed < timeout_seconds) {
+    while (polls < max_polls) {
         status = api_check_push_status(config, request_id);
 
         if (status == PUSH_STATUS_APPROVED) {
@@ -288,12 +286,7 @@ int api_wait_for_push(const worldposta_config_t *config, const char *request_id,
 
         /* Poll every 500ms */
         usleep(500000);
-        elapsed++;
-
-        /* Actually count properly - 2 polls per second */
-        if (elapsed % 2 == 0) {
-            /* One second has passed */
-        }
+        polls++;
     }
 
     return PUSH_STATUS_EXPIRED;
