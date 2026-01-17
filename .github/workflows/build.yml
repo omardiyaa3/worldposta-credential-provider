@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-2022
 
     steps:
@@ -76,9 +76,44 @@ jobs:
         name: stable-files
         path: stable/
 
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libpam0g-dev libcurl4-openssl-dev libssl-dev libjson-c-dev
+
+    - name: Build PAM module
+      working-directory: worldposta-ssh-mfa
+      run: |
+        make clean || true
+        make
+
+    - name: Prepare Linux artifacts
+      run: |
+        mkdir -p linux-artifacts
+        cp worldposta-ssh-mfa/pam_worldposta.so linux-artifacts/
+        cp worldposta-ssh-mfa/config/worldposta.conf linux-artifacts/
+        cp worldposta-ssh-mfa/scripts/install.sh linux-artifacts/
+        cp worldposta-ssh-mfa/scripts/uninstall.sh linux-artifacts/
+        chmod +x linux-artifacts/*.sh
+        # Create a tarball for easy distribution
+        tar -czvf linux-artifacts/worldposta-ssh-mfa.tar.gz -C worldposta-ssh-mfa pam_worldposta.so config scripts Makefile src
+
+    - name: Upload Linux Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: WorldPosta-SSH-MFA-Linux
+        path: linux-artifacts/
+
   create-installer:
     runs-on: windows-2022
-    needs: build
+    needs: build-windows
 
     steps:
     - name: Checkout code
@@ -132,22 +167,46 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: create-installer
+    needs: [create-installer, build-linux]
     if: github.ref == 'refs/heads/main'
 
     steps:
-    - name: Download Installer
+    - name: Download Windows Installer
       uses: actions/download-artifact@v4
       with:
         name: WorldPostaAuthenticator-Installer
         path: installer
+
+    - name: Download Linux Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: WorldPosta-SSH-MFA-Linux
+        path: linux
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
         tag_name: v1.0.${{ github.run_number }}
         name: WorldPosta Authenticator v1.0.${{ github.run_number }}
-        files: installer/WorldPostaAuthenticator.msi
+        files: |
+          installer/WorldPostaAuthenticator.msi
+          linux/worldposta-ssh-mfa.tar.gz
+          linux/pam_worldposta.so
+        body: |
+          ## WorldPosta Authenticator v1.0.${{ github.run_number }}
+
+          ### Windows RDP 2FA
+          - `WorldPostaAuthenticator.msi` - Windows installer for RDP credential provider
+
+          ### Linux SSH 2FA
+          - `worldposta-ssh-mfa.tar.gz` - Full source with install scripts
+          - `pam_worldposta.so` - Pre-built PAM module (Ubuntu/Debian x64)
+
+          #### Linux Quick Install:
+          ```bash
+          tar -xzf worldposta-ssh-mfa.tar.gz
+          sudo ./scripts/install.sh
+          ```
         draft: false
         prerelease: true
       env:
