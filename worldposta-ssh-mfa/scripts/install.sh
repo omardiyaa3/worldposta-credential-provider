@@ -126,27 +126,25 @@ else
     fi
 fi
 
-# Configure SSHD
+# Configure SSHD for keyboard-interactive authentication
 SSHD_CONFIG="/etc/ssh/sshd_config"
-SSHD_CHANGED=0
+echo ""
+echo "Configuring SSH for MFA..."
+cp "$SSHD_CONFIG" "${SSHD_CONFIG}.bak"
 
-if ! grep -qE "^ChallengeResponseAuthentication\s+yes" "$SSHD_CONFIG" && \
-   ! grep -qE "^KbdInteractiveAuthentication\s+yes" "$SSHD_CONFIG"; then
-    echo ""
-    read -p "Enable ChallengeResponseAuthentication in sshd_config? [Y/n]: " ENABLE_CRA
-    ENABLE_CRA=${ENABLE_CRA:-Y}
-
-    if [[ $ENABLE_CRA =~ ^[Yy]$ ]]; then
-        cp "$SSHD_CONFIG" "${SSHD_CONFIG}.bak"
-        if grep -qE "^#?ChallengeResponseAuthentication" "$SSHD_CONFIG"; then
-            sed -i 's/^#*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/' "$SSHD_CONFIG"
-        else
-            echo "ChallengeResponseAuthentication yes" >> "$SSHD_CONFIG"
-        fi
-        SSHD_CHANGED=1
-        echo -e "${GREEN}SSHD configured${NC}"
-    fi
+# Enable KbdInteractiveAuthentication
+sed -i 's/^#*KbdInteractiveAuthentication.*/KbdInteractiveAuthentication yes/' "$SSHD_CONFIG"
+if ! grep -q "^KbdInteractiveAuthentication" "$SSHD_CONFIG"; then
+    echo "KbdInteractiveAuthentication yes" >> "$SSHD_CONFIG"
 fi
+
+# Enable ChallengeResponseAuthentication
+sed -i 's/^#*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/' "$SSHD_CONFIG"
+if ! grep -q "^ChallengeResponseAuthentication" "$SSHD_CONFIG"; then
+    echo "ChallengeResponseAuthentication yes" >> "$SSHD_CONFIG"
+fi
+
+echo -e "${GREEN}SSH configured for MFA (backup: ${SSHD_CONFIG}.bak)${NC}"
 
 # Restart SSH
 echo ""
