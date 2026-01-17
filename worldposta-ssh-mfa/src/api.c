@@ -192,10 +192,10 @@ int api_verify_otp(const worldposta_config_t *config, const char *username, cons
 
     /* Send request */
     if (http_post(config, "/v1/totp/verify", body, &response) == 0) {
-        /* Parse response */
+        /* Parse response - API returns {"valid":true} */
         resp_obj = json_tokener_parse(response.data);
         if (resp_obj) {
-            if (json_object_object_get_ex(resp_obj, "success", &success_obj)) {
+            if (json_object_object_get_ex(resp_obj, "valid", &success_obj)) {
                 if (json_object_get_boolean(success_obj)) {
                     result = 0;
                 }
