@@ -43,6 +43,26 @@ else
     exit 1
 fi
 
+# Prompt for API credentials
+echo "Please enter your WorldPosta API credentials:"
+echo ""
+
+read -p "API Endpoint [https://api.worldposta.com]: " ENDPOINT
+ENDPOINT=${ENDPOINT:-https://api.worldposta.com}
+
+read -p "Integration Key: " INTEGRATION_KEY
+while [ -z "$INTEGRATION_KEY" ]; do
+    echo -e "${RED}Integration key is required${NC}"
+    read -p "Integration Key: " INTEGRATION_KEY
+done
+
+read -p "Secret Key: " SECRET_KEY
+while [ -z "$SECRET_KEY" ]; do
+    echo -e "${RED}Secret key is required${NC}"
+    read -p "Secret Key: " SECRET_KEY
+done
+
+echo ""
 echo "Installing to: $LIBDIR"
 echo ""
 
@@ -55,38 +75,98 @@ echo "Installing PAM module..."
 cp "$SCRIPT_DIR/pam_worldposta.so" "$LIBDIR/"
 chmod 644 "$LIBDIR/pam_worldposta.so"
 
-# Copy config if not exists
-if [ ! -f /etc/worldposta/worldposta.conf ]; then
-    echo "Installing sample config..."
-    cp "$SCRIPT_DIR/worldposta.conf" /etc/worldposta/
-    chmod 600 /etc/worldposta/worldposta.conf
-else
-    echo "Config already exists, skipping..."
-fi
+# Create config file with user's credentials
+echo "Creating config file..."
+cat > /etc/worldposta/worldposta.conf << EOF
+# WorldPosta SSH MFA Configuration
+
+[api]
+endpoint = $ENDPOINT
+integration_key = $INTEGRATION_KEY
+secret_key = $SECRET_KEY
+timeout = 60
+
+[auth]
+auth_methods = both
+service_name = Linux SSH Login
+
+[options]
+exclude_users =
+require_groups =
+log_level = info
+EOF
+chmod 600 /etc/worldposta/worldposta.conf
 
 # Copy uninstall script
 cp "$SCRIPT_DIR/uninstall.sh" /etc/worldposta/
 chmod 755 /etc/worldposta/uninstall.sh
 
+# Configure PAM
 echo ""
-echo -e "${GREEN}Installation complete!${NC}"
+PAM_FILE="/etc/pam.d/sshd"
+PAM_LINE="auth required pam_worldposta.so"
+
+if grep -q "pam_worldposta.so" "$PAM_FILE" 2>/dev/null; then
+    echo "PAM already configured for WorldPosta"
+else
+    read -p "Configure PAM automatically? [Y/n]: " CONFIGURE_PAM
+    CONFIGURE_PAM=${CONFIGURE_PAM:-Y}
+
+    if [[ $CONFIGURE_PAM =~ ^[Yy]$ ]]; then
+        cp "$PAM_FILE" "${PAM_FILE}.bak"
+
+        if grep -q "@include common-auth" "$PAM_FILE"; then
+            sed -i '/@include common-auth/a '"$PAM_LINE" "$PAM_FILE"
+        elif grep -q "pam_unix.so" "$PAM_FILE"; then
+            sed -i '/pam_unix.so/a '"$PAM_LINE" "$PAM_FILE"
+        else
+            echo "$PAM_LINE" >> "$PAM_FILE"
+        fi
+        echo -e "${GREEN}PAM configured (backup: ${PAM_FILE}.bak)${NC}"
+    fi
+fi
+
+# Configure SSHD
+SSHD_CONFIG="/etc/ssh/sshd_config"
+SSHD_CHANGED=0
+
+if ! grep -qE "^ChallengeResponseAuthentication\s+yes" "$SSHD_CONFIG" && \
+   ! grep -qE "^KbdInteractiveAuthentication\s+yes" "$SSHD_CONFIG"; then
+    echo ""
+    read -p "Enable ChallengeResponseAuthentication in sshd_config? [Y/n]: " ENABLE_CRA
+    ENABLE_CRA=${ENABLE_CRA:-Y}
+
+    if [[ $ENABLE_CRA =~ ^[Yy]$ ]]; then
+        cp "$SSHD_CONFIG" "${SSHD_CONFIG}.bak"
+        if grep -qE "^#?ChallengeResponseAuthentication" "$SSHD_CONFIG"; then
+            sed -i 's/^#*ChallengeResponseAuthentication.*/ChallengeResponseAuthentication yes/' "$SSHD_CONFIG"
+        else
+            echo "ChallengeResponseAuthentication yes" >> "$SSHD_CONFIG"
+        fi
+        SSHD_CHANGED=1
+        echo -e "${GREEN}SSHD configured${NC}"
+    fi
+fi
+
+# Restart SSH
+echo ""
+read -p "Restart SSH service now? [Y/n]: " RESTART_SSH
+RESTART_SSH=${RESTART_SSH:-Y}
+
+if [[ $RESTART_SSH =~ ^[Yy]$ ]]; then
+    systemctl restart sshd
+    echo -e "${GREEN}SSH service restarted${NC}"
+fi
+
 echo ""
 echo "========================================"
-echo "  Next Steps"
+echo -e "  ${GREEN}Installation Complete!${NC}"
 echo "========================================"
 echo ""
-echo "1. Edit the config file with your API keys:"
-echo -e "   ${YELLOW}sudo nano /etc/worldposta/worldposta.conf${NC}"
+echo "WorldPosta SSH MFA is now active."
 echo ""
-echo "2. Add this line to /etc/pam.d/sshd (after @include common-auth):"
-echo -e "   ${YELLOW}auth required pam_worldposta.so${NC}"
-echo ""
-echo "3. Ensure /etc/ssh/sshd_config has:"
-echo "   ChallengeResponseAuthentication yes"
-echo "   UsePAM yes"
-echo ""
-echo "4. Restart SSH:"
-echo -e "   ${YELLOW}sudo systemctl restart sshd${NC}"
-echo ""
+echo "Config file: /etc/worldposta/worldposta.conf"
 echo "To uninstall: sudo /etc/worldposta/uninstall.sh"
+echo ""
+echo -e "${YELLOW}IMPORTANT: Test SSH login from another terminal before closing this session!${NC}"
 echo ""
