@@ -180,31 +180,20 @@ void api_cleanup(void) {
 
 int api_verify_otp(const worldposta_config_t *config, const char *username, const char *code) {
     response_buffer_t response = {0};
-    struct json_object *request, *resp_obj, *success_obj;
-    const char *body;
+    char body[512];
     int result = -1;
 
-    /* Build request JSON */
-    request = json_object_new_object();
-    json_object_object_add(request, "externalUserId", json_object_new_string(username));
-    json_object_object_add(request, "code", json_object_new_string(code));
-    body = json_object_to_json_string(request);
+    /* Build request JSON - use simple formatting like Windows code */
+    snprintf(body, sizeof(body), "{\"externalUserId\":\"%s\",\"code\":\"%s\"}", username, code);
 
     /* Send request */
     if (http_post(config, "/v1/totp/verify", body, &response) == 0) {
         /* Parse response - API returns {"valid":true} */
-        resp_obj = json_tokener_parse(response.data);
-        if (resp_obj) {
-            if (json_object_object_get_ex(resp_obj, "valid", &success_obj)) {
-                if (json_object_get_boolean(success_obj)) {
-                    result = 0;
-                }
-            }
-            json_object_put(resp_obj);
+        if (response.data && strstr(response.data, "\"valid\":true")) {
+            result = 0;
         }
     }
 
-    json_object_put(request);
     free(response.data);
 
     return result;
