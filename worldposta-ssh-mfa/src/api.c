@@ -142,8 +142,8 @@ static int http_get(const worldposta_config_t *config, const char *endpoint,
         return -1;
     }
 
-    /* For GET requests, sign with empty body */
-    headers = build_headers(config, "");
+    /* For GET requests, sign with empty JSON object (backend does JSON.stringify(body || {})) */
+    headers = build_headers(config, "{}");
     if (!headers) {
         curl_easy_cleanup(curl);
         return -1;
