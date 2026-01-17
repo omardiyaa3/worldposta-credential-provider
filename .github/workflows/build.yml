@@ -96,20 +96,19 @@ jobs:
 
     - name: Prepare Linux artifacts
       run: |
-        mkdir -p linux-artifacts
-        cp worldposta-ssh-mfa/pam_worldposta.so linux-artifacts/
-        cp worldposta-ssh-mfa/config/worldposta.conf linux-artifacts/
-        cp worldposta-ssh-mfa/scripts/install.sh linux-artifacts/
-        cp worldposta-ssh-mfa/scripts/uninstall.sh linux-artifacts/
-        chmod +x linux-artifacts/*.sh
-        # Create a tarball for easy distribution
-        tar -czvf linux-artifacts/worldposta-ssh-mfa.tar.gz -C worldposta-ssh-mfa pam_worldposta.so config scripts Makefile src
+        mkdir -p package
+        cp worldposta-ssh-mfa/pam_worldposta.so package/
+        cp worldposta-ssh-mfa/config/worldposta.conf package/
+        cp worldposta-ssh-mfa/scripts/install.sh package/
+        cp worldposta-ssh-mfa/scripts/uninstall.sh package/
+        chmod +x package/*.sh
+        tar -czvf WorldPosta-SSH-MFA.tar.gz -C package .
 
     - name: Upload Linux Artifact
       uses: actions/upload-artifact@v4
       with:
         name: WorldPosta-SSH-MFA-Linux
-        path: linux-artifacts/
+        path: WorldPosta-SSH-MFA.tar.gz
 
   create-installer:
     runs-on: windows-2022
@@ -190,22 +189,20 @@ jobs:
         name: WorldPosta Authenticator v1.0.${{ github.run_number }}
         files: |
           installer/WorldPostaAuthenticator.msi
-          linux/worldposta-ssh-mfa.tar.gz
-          linux/pam_worldposta.so
+          linux/WorldPosta-SSH-MFA.tar.gz
+        fail_on_unmatched_files: false
         body: |
           ## WorldPosta Authenticator v1.0.${{ github.run_number }}
 
           ### Windows RDP 2FA
-          - `WorldPostaAuthenticator.msi` - Windows installer for RDP credential provider
+          Download `WorldPostaAuthenticator.msi` and run the installer.
 
           ### Linux SSH 2FA
-          - `worldposta-ssh-mfa.tar.gz` - Full source with install scripts
-          - `pam_worldposta.so` - Pre-built PAM module (Ubuntu/Debian x64)
-
-          #### Linux Quick Install:
           ```bash
-          tar -xzf worldposta-ssh-mfa.tar.gz
+          tar -xzf WorldPosta-SSH-MFA.tar.gz
           sudo ./scripts/install.sh
+          sudo nano /etc/worldposta/worldposta.conf  # Add your API keys
+          sudo systemctl restart sshd
           ```
         draft: false
         prerelease: true
