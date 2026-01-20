@@ -110,6 +110,45 @@ jobs:
         name: WorldPosta-SSH-MFA-Linux
         path: WorldPosta-SSH-MFA.tar.gz
 
+  build-auth-proxy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies and verify
+      working-directory: worldposta-auth-proxy
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        python -c "from src.config import load_config; print('Config module OK')"
+        python -c "from src.api import WorldPostaClient; print('API module OK')"
+        python -c "from src.radius import RADIUSServer; print('RADIUS module OK')"
+
+    - name: Prepare Auth Proxy package
+      run: |
+        mkdir -p authproxy-package
+        cp -r worldposta-auth-proxy/src authproxy-package/
+        cp worldposta-auth-proxy/requirements.txt authproxy-package/
+        cp worldposta-auth-proxy/config/authproxy.cfg.example authproxy-package/
+        cp worldposta-auth-proxy/scripts/install.sh authproxy-package/
+        cp worldposta-auth-proxy/scripts/uninstall.sh authproxy-package/
+        cp worldposta-auth-proxy/scripts/worldposta-authproxy.service authproxy-package/
+        chmod +x authproxy-package/*.sh
+        tar -czvf WorldPosta-Auth-Proxy.tar.gz -C authproxy-package .
+
+    - name: Upload Auth Proxy Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: WorldPosta-Auth-Proxy-Linux
+        path: WorldPosta-Auth-Proxy.tar.gz
+
   create-installer:
     runs-on: windows-2022
     needs: build-windows
@@ -166,7 +205,7 @@ jobs:
 
   release:
     runs-on: ubuntu-latest
-    needs: [create-installer, build-linux]
+    needs: [create-installer, build-linux, build-auth-proxy]
     if: github.ref == 'refs/heads/main'
 
     steps:
@@ -182,6 +221,12 @@ jobs:
         name: WorldPosta-SSH-MFA-Linux
         path: linux
 
+    - name: Download Auth Proxy Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: WorldPosta-Auth-Proxy-Linux
+        path: authproxy
+
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
@@ -190,6 +235,7 @@ jobs:
         files: |
           installer/WorldPostaAuthenticator.msi
           linux/WorldPosta-SSH-MFA.tar.gz
+          authproxy/WorldPosta-Auth-Proxy.tar.gz
         fail_on_unmatched_files: false
         body: |
           ## WorldPosta Authenticator v1.0.${{ github.run_number }}
@@ -200,10 +246,24 @@ jobs:
           ### Linux SSH 2FA
           ```bash
           tar -xzf WorldPosta-SSH-MFA.tar.gz
-          sudo ./scripts/install.sh
+          sudo ./install.sh
           sudo nano /etc/worldposta/worldposta.conf  # Add your API keys
           sudo systemctl restart sshd
           ```
+
+          ### Authentication Proxy (RADIUS/LDAP for VPN & vCenter)
+          ```bash
+          tar -xzf WorldPosta-Auth-Proxy.tar.gz
+          sudo ./install.sh
+          sudo nano /etc/worldposta/authproxy.cfg  # Configure AD and RADIUS clients
+          sudo systemctl start worldposta-authproxy
+          ```
+
+          **Supported integrations:**
+          - GlobalProtect VPN (RADIUS)
+          - Cisco ASA (RADIUS)
+          - Fortinet FortiGate (RADIUS)
+          - VMware vCenter (LDAP)
         draft: false
         prerelease: true
       env:

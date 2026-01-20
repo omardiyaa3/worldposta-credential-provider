@@ -1,0 +1,27 @@
+[Unit]
+Description=WorldPosta Authentication Proxy
+Documentation=https://docs.worldposta.com/authproxy
+After=network.target
+
+[Service]
+Type=simple
+User=worldposta
+Group=worldposta
+ExecStart=/opt/worldposta-authproxy/run.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/worldposta
+PrivateTmp=true
+
+# Allow binding to privileged ports (RADIUS 1812, LDAP 389)
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target

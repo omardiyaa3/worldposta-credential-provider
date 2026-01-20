@@ -1,0 +1,99 @@
+# WorldPosta Authentication Proxy Configuration
+#
+# This file configures the authentication proxy for RADIUS and LDAP
+# authentication with WorldPosta two-factor authentication.
+#
+# Similar to Duo Authentication Proxy configuration format.
+
+[main]
+# Log level: DEBUG, INFO, WARNING, ERROR
+log_level = INFO
+
+# Log file location
+log_file = /var/log/worldposta/authproxy.log
+
+# Enable debug mode (verbose logging)
+debug = false
+
+
+[worldposta_api]
+# WorldPosta API endpoint
+endpoint = https://api.worldposta.com
+
+# Your integration key (from WorldPosta admin portal)
+integration_key = int_xxxxxxxxxxxxxxxxxxxx
+
+# Your secret key (from WorldPosta admin portal)
+secret_key = sk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# Push notification timeout in seconds
+push_timeout = 60
+
+
+# Primary authentication against Active Directory
+# You can have multiple [ad_client] sections with different names
+[ad_client]
+# Active Directory / LDAP server
+host = dc.company.com
+
+# LDAP port (389 for LDAP, 636 for LDAPS)
+port = 389
+
+# Use SSL/TLS
+use_ssl = false
+
+# Base DN for user searches
+base_dn = DC=company,DC=com
+
+# Service account for user lookups
+bind_dn = CN=svc_worldposta,OU=Service Accounts,DC=company,DC=com
+bind_password = YourServiceAccountPassword
+
+# LDAP search filter ({username} will be replaced)
+search_filter = (sAMAccountName={username})
+
+
+# RADIUS server configuration for VPNs
+# Mode options:
+#   - radius_server_auto: User enters password, push is triggered automatically
+#   - radius_server_concat: User can append factor (password,push or password,123456)
+#   - radius_server_challenge: Two-step with Access-Challenge (for compatible clients)
+[radius_server_auto]
+# Reference to primary auth client
+client = ad_client
+
+# RADIUS listening port
+port = 1812
+
+# Fail open (allow access if 2FA service unavailable)
+# WARNING: Only enable for testing, not recommended for production
+fail_open = false
+
+# RADIUS clients (VPN concentrators, firewalls, etc.)
+# Add as many as needed: radius_ip_1, radius_secret_1, radius_ip_2, etc.
+
+# Example: Palo Alto GlobalProtect
+radius_ip_1 = 10.0.0.1
+radius_secret_1 = YourSharedSecret123
+
+# Example: Cisco ASA
+radius_ip_2 = 10.0.0.2
+radius_secret_2 = AnotherSharedSecret456
+
+# Example: Fortinet FortiGate
+# radius_ip_3 = 10.0.0.3
+# radius_secret_3 = FortinetSecret789
+
+
+# LDAP server configuration for vCenter and other applications
+# Uncomment to enable LDAP server for vCenter integration
+# [ldap_server_auto]
+# client = ad_client
+# port = 10389
+# ssl_port = 10636
+# use_ssl = false
+# ssl_cert = /etc/worldposta/ldap-cert.pem
+# ssl_key = /etc/worldposta/ldap-key.pem
+#
+# NOTE: Use non-standard ports (10389/10636) to avoid conflicts with real AD
+# Configure vCenter to point to this proxy instead of real AD for 2FA

@@ -1,0 +1,23 @@
+# WorldPosta Authentication Proxy - Dependencies
+
+# RADIUS server
+pyrad>=2.4
+
+# LDAP client (for AD authentication)
+ldap3>=2.9
+
+# LDAP server
+Twisted>=22.0
+ldaptor>=21.2
+
+# Async HTTP client
+aiohttp>=3.8
+
+# Configuration
+configparser>=5.0
+
+# Cryptography for HMAC signing
+cryptography>=3.4
+
+# For Windows service support (optional, Phase 5)
+# pywin32>=300
