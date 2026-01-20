@@ -175,11 +175,30 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                 # Convert filter to string properly
                 search_filter = "(objectClass=*)"  # default
                 if request.filter is not None:
-                    if hasattr(request.filter, 'toWire'):
-                        # Use toWire() and decode
-                        search_filter = request.filter.toWire().decode('utf-8')
-                    elif isinstance(request.filter, bytes):
-                        search_filter = request.filter.decode('utf-8')
+                    try:
+                        # Try to get text representation of filter
+                        from ldaptor.protocols.pureldap import LDAPFilter_present, LDAPFilter_equalityMatch
+                        if hasattr(request.filter, 'value'):
+                            # Simple present filter like (objectClass=*)
+                            attr = request.filter.value
+                            if isinstance(attr, bytes):
+                                attr = attr.decode('utf-8')
+                            search_filter = f"({attr}=*)"
+                        elif hasattr(request.filter, 'attributeDesc'):
+                            # Equality match filter
+                            attr = request.filter.attributeDesc
+                            val = request.filter.assertionValue
+                            if isinstance(attr, bytes):
+                                attr = attr.decode('utf-8')
+                            if isinstance(val, bytes):
+                                val = val.decode('utf-8')
+                            search_filter = f"({attr}={val})"
+                        else:
+                            # Default to objectClass=*
+                            search_filter = "(objectClass=*)"
+                    except Exception as filter_err:
+                        logger.debug(f"Could not parse filter, using default: {filter_err}")
+                        search_filter = "(objectClass=*)"
 
                 logger.debug(f"Proxying search to AD: base={search_base}, filter={search_filter}")
 
