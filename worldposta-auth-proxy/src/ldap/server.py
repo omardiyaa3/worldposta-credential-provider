@@ -153,13 +153,15 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
         to allow user/group lookups.
         """
         # Decode bytes for logging
-        base_object = request.baseObject.decode() if isinstance(request.baseObject, bytes) else str(request.baseObject)
-        filter_str = str(request.filter) if request.filter else ""
+        try:
+            base_object = request.baseObject.decode('utf-8') if isinstance(request.baseObject, bytes) else str(request.baseObject)
+        except:
+            base_object = "unknown"
 
-        logger.debug(f"LDAP search request: base={base_object}, filter={filter_str}")
+        logger.debug(f"LDAP search request: base={base_object}")
 
-        # Send search done with success
-        reply(pureldap.LDAPSearchResultDone(resultCode=0, matchedDN=b'', errorMessage=b''))
+        # Send search done with success - use only resultCode to avoid encoding issues
+        reply(pureldap.LDAPSearchResultDone(resultCode=0))
 
     def handle_LDAPUnbindRequest(self, request, controls, reply):
         """Handle unbind request"""
