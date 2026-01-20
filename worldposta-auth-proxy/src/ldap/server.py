@@ -152,12 +152,14 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
         For vCenter integration, we need to proxy search requests to the real AD
         to allow user/group lookups.
         """
-        # For now, return empty result
-        # TODO: Implement proxy to real AD for searches
-        logger.debug(f"LDAP search request: base={request.baseObject}, filter={request.filter}")
+        # Decode bytes for logging
+        base_object = request.baseObject.decode() if isinstance(request.baseObject, bytes) else str(request.baseObject)
+        filter_str = str(request.filter) if request.filter else ""
 
-        # Send search done
-        reply(pureldap.LDAPSearchResultDone(resultCode=0))
+        logger.debug(f"LDAP search request: base={base_object}, filter={filter_str}")
+
+        # Send search done with success
+        reply(pureldap.LDAPSearchResultDone(resultCode=0, matchedDN=b'', errorMessage=b''))
 
     def handle_LDAPUnbindRequest(self, request, controls, reply):
         """Handle unbind request"""
