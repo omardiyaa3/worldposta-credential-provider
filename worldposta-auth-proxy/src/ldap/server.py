@@ -149,10 +149,9 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
         """
         Handle LDAP search request
 
-        For vCenter integration, we need to proxy search requests to the real AD
-        to allow user/group lookups.
+        Proxy search requests to real AD server so vCenter can find users/groups.
+        Only bind requests trigger 2FA.
         """
-        # Decode bytes for logging
         try:
             base_object = request.baseObject.decode('utf-8') if isinstance(request.baseObject, bytes) else str(request.baseObject)
         except:
@@ -160,7 +159,59 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
 
         logger.debug(f"LDAP search request: base={base_object}")
 
-        # Send search done with success - use only resultCode to avoid encoding issues
+        # Proxy search to real AD
+        if self.ad_config:
+            try:
+                from ldap3 import Server, Connection, ALL, SUBTREE
+
+                server = Server(self.ad_config.host, port=self.ad_config.port, get_info=ALL)
+                conn = Connection(
+                    server,
+                    user=self.ad_config.bind_dn,
+                    password=self.ad_config.bind_password,
+                    auto_bind=True
+                )
+
+                # Get search parameters
+                search_base = request.baseObject.decode('utf-8') if isinstance(request.baseObject, bytes) else str(request.baseObject)
+                search_filter = request.filter.decode('utf-8') if isinstance(request.filter, bytes) else str(request.filter)
+
+                # Convert filter to string if it's an object
+                if hasattr(request.filter, 'asText'):
+                    search_filter = request.filter.asText()
+                elif not isinstance(search_filter, str):
+                    search_filter = "(objectClass=*)"
+
+                # Perform search
+                conn.search(
+                    search_base=search_base,
+                    search_filter=search_filter,
+                    search_scope=SUBTREE,
+                    attributes=['*']
+                )
+
+                # Send results back
+                for entry in conn.entries:
+                    # Build attributes list
+                    attrs = []
+                    for attr_name in entry.entry_attributes:
+                        values = entry[attr_name].values
+                        if values:
+                            attr_vals = [v.encode('utf-8') if isinstance(v, str) else v for v in values]
+                            attrs.append((attr_name.encode('utf-8'), attr_vals))
+
+                    result_entry = pureldap.LDAPSearchResultEntry(
+                        objectName=entry.entry_dn.encode('utf-8'),
+                        attributes=attrs
+                    )
+                    reply(result_entry)
+
+                conn.unbind()
+
+            except Exception as e:
+                logger.error(f"Error proxying search to AD: {e}")
+
+        # Send search done
         reply(pureldap.LDAPSearchResultDone(resultCode=0))
 
     def handle_LDAPUnbindRequest(self, request, controls, reply):
