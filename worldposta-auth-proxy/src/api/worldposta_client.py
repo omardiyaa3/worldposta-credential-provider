@@ -75,19 +75,33 @@ class WorldPostaClient:
             Tuple of (success, response_data)
         """
         url = f"{self.endpoint}{path}"
-        body_str = json.dumps(body) if body else "{}"
+        # Use compact JSON (no spaces) to match signature format
+        body_str = json.dumps(body, separators=(',', ':')) if body else "{}"
         headers = get_auth_headers(self.integration_key, self.secret_key, body_str)
+
+        logger.debug(f"API request: {method} {url}")
+        logger.debug(f"Request body: {body_str}")
 
         try:
             session = await self._get_session()
 
             if method.upper() == "GET":
                 async with session.get(url, headers=headers) as response:
-                    data = await response.json()
+                    response_text = await response.text()
+                    logger.debug(f"Response status: {response.status}, body: {response_text}")
+                    try:
+                        data = json.loads(response_text) if response_text else {}
+                    except json.JSONDecodeError:
+                        data = {"raw": response_text}
                     return response.status < 300, data
             else:
                 async with session.post(url, headers=headers, data=body_str) as response:
-                    data = await response.json()
+                    response_text = await response.text()
+                    logger.debug(f"Response status: {response.status}, body: {response_text}")
+                    try:
+                        data = json.loads(response_text) if response_text else {}
+                    except json.JSONDecodeError:
+                        data = {"raw": response_text}
                     return response.status < 300, data
 
         except asyncio.TimeoutError:
@@ -158,8 +172,10 @@ class WorldPostaClient:
             logger.info(f"Push sent to user {username}, requestId: {request_id}")
             return request_id
 
-        error = data.get("error", "unknown error")
+        # Log detailed error info
+        error = data.get("error") or data.get("message") or data.get("raw") or str(data)
         logger.warning(f"Failed to send push to user {username}: {error}")
+        logger.debug(f"Full response data: {data}")
         return None
 
     async def check_push_status(self, request_id: str) -> PushStatus:

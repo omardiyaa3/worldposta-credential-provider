@@ -258,18 +258,20 @@ class RADIUSServer:
 
         while self.running:
             try:
-                # Receive packet (with timeout for graceful shutdown)
-                data, source = await asyncio.wait_for(
-                    loop.run_in_executor(None, self.socket.recvfrom, 4096),
-                    timeout=1.0
+                # Receive packet (socket has 1 second timeout)
+                data, source = await loop.run_in_executor(
+                    None, self.socket.recvfrom, 4096
                 )
 
                 # Handle packet in background
                 asyncio.create_task(self._process_and_respond(data, source))
 
-            except asyncio.TimeoutError:
-                # Check if we should keep running
+            except socket.timeout:
+                # Socket timeout - check if we should keep running
                 continue
+            except OSError as e:
+                if self.running and e.errno not in (11, 35):  # EAGAIN, EWOULDBLOCK
+                    logger.error(f"Socket error in receive loop: {e}")
             except Exception as e:
                 if self.running:
                     logger.error(f"Error in receive loop: {e}")
@@ -291,7 +293,8 @@ class RADIUSServer:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.socket.bind(("0.0.0.0", self.config.port))
-        self.socket.setblocking(False)
+        # Keep socket blocking - we use run_in_executor with timeout
+        self.socket.settimeout(1.0)  # 1 second timeout for graceful shutdown
 
         self.running = True
 
