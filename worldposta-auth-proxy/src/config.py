@@ -69,6 +69,9 @@ class LDAPServerConfig:
     ssl_cert: str = ""
     ssl_key: str = ""
     client_name: str = ""  # Reference to ad_client
+    # Service account exemption settings (like Duo)
+    exempt_primary_bind: bool = True  # Skip 2FA for first bind in connection
+    exempt_ous: List[str] = field(default_factory=list)  # DNs to exempt from 2FA
 
 
 @dataclass
@@ -199,6 +202,17 @@ class ConfigParser:
         server.ssl_cert = options.get("ssl_cert", "")
         server.ssl_key = options.get("ssl_key", "")
         server.client_name = options.get("client", "")
+
+        # Service account exemption settings
+        server.exempt_primary_bind = options.get("exempt_primary_bind", "true").lower() == "true"
+
+        # Parse exempt_ou_1, exempt_ou_2, etc.
+        exempt_ous = []
+        ou_index = 1
+        while f"exempt_ou_{ou_index}" in options:
+            exempt_ous.append(options[f"exempt_ou_{ou_index}"])
+            ou_index += 1
+        server.exempt_ous = exempt_ous
 
         self.config.ldap_servers[section] = server
 

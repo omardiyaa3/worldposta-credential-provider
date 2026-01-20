@@ -32,7 +32,7 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
     Flow:
     1. Client sends LDAP bind request (username + password)
     2. We validate password against real AD
-    3. We trigger WorldPosta 2FA (push)
+    3. We trigger WorldPosta 2FA (push) - unless exempt
     4. If approved, return bind success
     5. If denied/timeout, return bind failure
     """
@@ -45,6 +45,7 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
         self.api_config = api_config
         self.service_name = service_name
         self._auth_engine: Optional[AuthEngine] = None
+        self._first_bind_done = False  # Track first bind for exempt_primary_bind
 
     def _get_auth_engine(self) -> AuthEngine:
         """Get or create auth engine"""
@@ -55,6 +56,46 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                 service_name=self.service_name
             )
         return self._auth_engine
+
+    def _is_exempt_from_2fa(self, dn: str) -> Tuple[bool, str]:
+        """
+        Check if DN is exempt from 2FA
+
+        Returns:
+            Tuple of (is_exempt, reason)
+        """
+        dn_lower = dn.lower()
+
+        # Check exempt_primary_bind - skip 2FA for first bind in connection
+        if self.config.exempt_primary_bind and not self._first_bind_done:
+            return True, "exempt_primary_bind (first bind in connection)"
+
+        # Check if DN matches the AD service account (auto-exempt)
+        if self.ad_config and self.ad_config.bind_dn:
+            service_dn = self.ad_config.bind_dn.lower()
+            # Match various formats: DN, UPN (user@domain), DOMAIN\user
+            if dn_lower == service_dn:
+                return True, f"service account (ad_client bind_dn)"
+            # Also check username part for UPN format
+            if "@" in dn_lower and "@" in service_dn:
+                if dn_lower.split("@")[0] == service_dn.split("@")[0]:
+                    return True, f"service account (matching username)"
+
+        # Check explicit exempt_ou list
+        for exempt_dn in self.config.exempt_ous:
+            exempt_lower = exempt_dn.lower()
+            # Exact match
+            if dn_lower == exempt_lower:
+                return True, f"exempt_ou match: {exempt_dn}"
+            # UPN/username match
+            if "@" in dn_lower and "@" in exempt_lower:
+                if dn_lower.split("@")[0] == exempt_lower.split("@")[0]:
+                    return True, f"exempt_ou match (username): {exempt_dn}"
+            # Check if DN ends with exempt OU (user is in that OU)
+            if dn_lower.endswith("," + exempt_lower):
+                return True, f"exempt_ou contains: {exempt_dn}"
+
+        return False, ""
 
     def _extract_username(self, dn: str) -> str:
         """
@@ -112,6 +153,31 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
         except:
             client_ip = "unknown"
 
+        # Check if this DN is exempt from 2FA (service account)
+        is_exempt, exempt_reason = self._is_exempt_from_2fa(dn)
+
+        if is_exempt:
+            logger.info(f"2FA EXEMPT for {username}: {exempt_reason}")
+            # Only verify AD password, skip 2FA
+            try:
+                from ldap3 import Server, Connection, ALL
+                server = Server(self.ad_config.host, port=self.ad_config.port, get_info=ALL)
+                conn = Connection(server, user=dn, password=password)
+                if conn.bind():
+                    logger.info(f"LDAP bind successful (exempt) for: {username}")
+                    conn.unbind()
+                    self._first_bind_done = True
+                    reply(pureldap.LDAPBindResponse(resultCode=0))
+                else:
+                    logger.warning(f"LDAP bind failed (exempt) for {username}: invalid credentials")
+                    self._first_bind_done = True
+                    reply(pureldap.LDAPBindResponse(resultCode=49, errorMessage=b"Invalid credentials"))
+            except Exception as e:
+                logger.error(f"Error during exempt LDAP bind for {username}: {e}")
+                reply(pureldap.LDAPBindResponse(resultCode=1, errorMessage=str(e).encode()))
+            return
+
+        # Not exempt - require 2FA
         try:
             # Run authentication in thread pool (to not block Twisted reactor)
             auth_engine = self._get_auth_engine()
@@ -130,6 +196,8 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                 )
             finally:
                 loop.close()
+
+            self._first_bind_done = True
 
             if result == AuthResult.SUCCESS:
                 logger.info(f"LDAP bind successful for: {username}")
