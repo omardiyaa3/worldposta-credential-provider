@@ -8,7 +8,7 @@ import asyncio
 from typing import Optional, Dict, Tuple
 from functools import partial
 
-from twisted.internet import reactor, defer, protocol
+from twisted.internet import reactor, protocol
 from twisted.internet.endpoints import TCP4ServerEndpoint
 from ldaptor.protocols.ldap import ldapclient, ldapserver, ldapsyntax
 from ldaptor.protocols.ldap.ldaperrors import (
@@ -89,7 +89,6 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
         # Return as-is
         return dn
 
-    @defer.inlineCallbacks
     def handle_LDAPBindRequest(self, request, controls, reply):
         """
         Handle LDAP bind request with 2FA
@@ -137,13 +136,11 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                 reply(pureldap.LDAPBindResponse(resultCode=0))
             else:
                 logger.warning(f"LDAP bind failed for {username}: {message}")
-                raise LDAPInvalidCredentials(message)
+                reply(pureldap.LDAPBindResponse(resultCode=49, errorMessage=message.encode() if isinstance(message, str) else message))
 
-        except LDAPInvalidCredentials:
-            raise
         except Exception as e:
             logger.error(f"Error during LDAP bind for {username}: {e}")
-            raise LDAPOperationsError(str(e))
+            reply(pureldap.LDAPBindResponse(resultCode=1, errorMessage=str(e).encode()))
 
     def handle_LDAPSearchRequest(self, request, controls, reply):
         """
@@ -174,13 +171,17 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
 
                 # Get search parameters
                 search_base = request.baseObject.decode('utf-8') if isinstance(request.baseObject, bytes) else str(request.baseObject)
-                search_filter = request.filter.decode('utf-8') if isinstance(request.filter, bytes) else str(request.filter)
 
-                # Convert filter to string if it's an object
-                if hasattr(request.filter, 'asText'):
-                    search_filter = request.filter.asText()
-                elif not isinstance(search_filter, str):
-                    search_filter = "(objectClass=*)"
+                # Convert filter to string properly
+                search_filter = "(objectClass=*)"  # default
+                if request.filter is not None:
+                    if hasattr(request.filter, 'toWire'):
+                        # Use toWire() and decode
+                        search_filter = request.filter.toWire().decode('utf-8')
+                    elif isinstance(request.filter, bytes):
+                        search_filter = request.filter.decode('utf-8')
+
+                logger.debug(f"Proxying search to AD: base={search_base}, filter={search_filter}")
 
                 # Perform search
                 conn.search(
@@ -190,26 +191,40 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                     attributes=['*']
                 )
 
+                logger.debug(f"AD returned {len(conn.entries)} entries")
+
                 # Send results back
                 for entry in conn.entries:
-                    # Build attributes list
-                    attrs = []
-                    for attr_name in entry.entry_attributes:
-                        values = entry[attr_name].values
-                        if values:
-                            attr_vals = [v.encode('utf-8') if isinstance(v, str) else v for v in values]
-                            attrs.append((attr_name.encode('utf-8'), attr_vals))
+                    try:
+                        # Build attributes list
+                        attrs = []
+                        for attr_name in entry.entry_attributes:
+                            values = entry[attr_name].values
+                            if values:
+                                attr_vals = []
+                                for v in values:
+                                    if isinstance(v, str):
+                                        attr_vals.append(v.encode('utf-8'))
+                                    elif isinstance(v, bytes):
+                                        attr_vals.append(v)
+                                    else:
+                                        attr_vals.append(str(v).encode('utf-8'))
+                                attrs.append((attr_name.encode('utf-8'), attr_vals))
 
-                    result_entry = pureldap.LDAPSearchResultEntry(
-                        objectName=entry.entry_dn.encode('utf-8'),
-                        attributes=attrs
-                    )
-                    reply(result_entry)
+                        result_entry = pureldap.LDAPSearchResultEntry(
+                            objectName=entry.entry_dn.encode('utf-8'),
+                            attributes=attrs
+                        )
+                        reply(result_entry)
+                    except Exception as entry_error:
+                        logger.debug(f"Error processing entry {entry.entry_dn}: {entry_error}")
 
                 conn.unbind()
 
             except Exception as e:
                 logger.error(f"Error proxying search to AD: {e}")
+                import traceback
+                logger.debug(traceback.format_exc())
 
         # Send search done
         reply(pureldap.LDAPSearchResultDone(resultCode=0))
