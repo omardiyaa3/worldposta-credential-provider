@@ -240,6 +240,12 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                 # Get search parameters
                 search_base = request.baseObject.decode('utf-8') if isinstance(request.baseObject, bytes) else str(request.baseObject)
 
+                # Get search scope from request (0=base, 1=onelevel, 2=subtree)
+                from ldap3 import BASE, LEVEL, SUBTREE
+                scope_map = {0: BASE, 1: LEVEL, 2: SUBTREE}
+                search_scope = scope_map.get(request.scope, SUBTREE)
+                logger.debug(f"Search scope: {request.scope} -> {search_scope}")
+
                 # Convert filter to string properly
                 search_filter = "(objectClass=*)"  # default
                 if request.filter is not None:
@@ -268,13 +274,13 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                         logger.debug(f"Could not parse filter, using default: {filter_err}")
                         search_filter = "(objectClass=*)"
 
-                logger.debug(f"Proxying search to AD: base={search_base}, filter={search_filter}")
+                logger.debug(f"Proxying search to AD: base={search_base}, filter={search_filter}, scope={search_scope}")
 
-                # Perform search
+                # Perform search with correct scope
                 conn.search(
                     search_base=search_base,
                     search_filter=search_filter,
-                    search_scope=SUBTREE,
+                    search_scope=search_scope,
                     attributes=['*']
                 )
 
