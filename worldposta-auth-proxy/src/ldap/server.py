@@ -442,6 +442,123 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
         logger.debug("LDAP unbind request")
         # No response needed for unbind
 
+    def handle_LDAPExtendedRequest(self, request, controls, reply):
+        """
+        Handle LDAP extended operation requests
+
+        vCenter may send extended operations like:
+        - 1.3.6.1.4.1.4203.1.11.3 (Who Am I)
+        - 1.3.6.1.4.1.1466.20037 (StartTLS)
+        """
+        try:
+            oid = request.requestName.decode() if isinstance(request.requestName, bytes) else str(request.requestName)
+        except:
+            oid = "unknown"
+
+        logger.debug(f"LDAP extended operation: OID={oid}")
+
+        # Who Am I extended operation
+        if oid == "1.3.6.1.4.1.4203.1.11.3":
+            # Return empty authzId (anonymous) - vCenter doesn't really need this
+            reply(pureldap.LDAPExtendedResponse(
+                resultCode=0,
+                responseName=b"1.3.6.1.4.1.4203.1.11.3",
+                response=b""
+            ))
+            return
+
+        # StartTLS - we don't support it, return unwilling to perform
+        if oid == "1.3.6.1.4.1.1466.20037":
+            logger.debug("StartTLS requested but not supported")
+            reply(pureldap.LDAPExtendedResponse(
+                resultCode=53,  # Unwilling to perform
+                errorMessage=b"StartTLS not supported"
+            ))
+            return
+
+        # For other extended operations, return success with empty response
+        logger.debug(f"Unknown extended operation {oid}, returning success")
+        reply(pureldap.LDAPExtendedResponse(
+            resultCode=0,
+            response=b""
+        ))
+
+    def handle_LDAPCompareRequest(self, request, controls, reply):
+        """Handle LDAP compare request by proxying to AD"""
+        try:
+            dn = request.entry.decode() if isinstance(request.entry, bytes) else str(request.entry)
+            attr = request.ava.attributeDesc.decode() if isinstance(request.ava.attributeDesc, bytes) else str(request.ava.attributeDesc)
+            val = request.ava.assertionValue.decode() if isinstance(request.ava.assertionValue, bytes) else str(request.ava.assertionValue)
+        except:
+            dn, attr, val = "unknown", "unknown", "unknown"
+
+        logger.debug(f"LDAP compare request: dn={dn}, attr={attr}")
+
+        # Proxy compare to real AD
+        if self.ad_config:
+            try:
+                from ldap3 import Server, Connection, ALL
+
+                server = Server(self.ad_config.host, port=self.ad_config.port, get_info=ALL)
+                conn = Connection(
+                    server,
+                    user=self.ad_config.bind_dn,
+                    password=self.ad_config.bind_password,
+                    auto_bind=True
+                )
+
+                result = conn.compare(dn, attr, val)
+                conn.unbind()
+
+                if result:
+                    reply(pureldap.LDAPCompareResponse(resultCode=6))  # compareTrue
+                else:
+                    reply(pureldap.LDAPCompareResponse(resultCode=5))  # compareFalse
+                return
+            except Exception as e:
+                logger.error(f"Error proxying compare to AD: {e}")
+
+        # Default: return compareFalse
+        reply(pureldap.LDAPCompareResponse(resultCode=5))
+
+    def handle_LDAPAbandonRequest(self, request, controls, reply):
+        """Handle abandon request - just log it, no response needed"""
+        logger.debug(f"LDAP abandon request for message ID: {request}")
+        # No response for abandon
+
+    def handle_LDAPModifyRequest(self, request, controls, reply):
+        """Handle modify request - return unwilling to perform"""
+        logger.debug("LDAP modify request - not supported")
+        reply(pureldap.LDAPModifyResponse(
+            resultCode=53,  # Unwilling to perform
+            errorMessage=b"Modify operations not supported by proxy"
+        ))
+
+    def handle_LDAPAddRequest(self, request, controls, reply):
+        """Handle add request - return unwilling to perform"""
+        logger.debug("LDAP add request - not supported")
+        reply(pureldap.LDAPAddResponse(
+            resultCode=53,  # Unwilling to perform
+            errorMessage=b"Add operations not supported by proxy"
+        ))
+
+    def handle_LDAPDelRequest(self, request, controls, reply):
+        """Handle delete request - return unwilling to perform"""
+        logger.debug("LDAP delete request - not supported")
+        reply(pureldap.LDAPDelResponse(
+            resultCode=53,  # Unwilling to perform
+            errorMessage=b"Delete operations not supported by proxy"
+        ))
+
+    def handle_LDAPModifyDNRequest(self, request, controls, reply):
+        """Handle modify DN request - return unwilling to perform"""
+        logger.debug("LDAP modify DN request - not supported")
+        # ModifyDNResponse uses same structure as other responses
+        reply(pureldap.LDAPModifyDNResponse(
+            resultCode=53,  # Unwilling to perform
+            errorMessage=b"Modify DN operations not supported by proxy"
+        ))
+
 
 class LDAPServerFactory(protocol.ServerFactory):
     """Factory for creating LDAP server instances"""
