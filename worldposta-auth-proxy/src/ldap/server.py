@@ -97,6 +97,94 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
 
         return False, ""
 
+    def _get_bytes_value(self, obj) -> str:
+        """Extract string value from ldaptor object or bytes"""
+        if isinstance(obj, bytes):
+            return obj.decode('utf-8')
+        if hasattr(obj, 'value'):
+            val = obj.value
+            if isinstance(val, bytes):
+                return val.decode('utf-8')
+            return str(val)
+        return str(obj)
+
+    def _convert_filter(self, filt) -> str:
+        """
+        Recursively convert ldaptor filter object to LDAP filter string
+
+        Handles: AND, OR, NOT, present, equalityMatch, substrings, etc.
+        """
+        from ldaptor.protocols import pureldap
+
+        filt_class = filt.__class__.__name__
+
+        # AND filter: (&(filter1)(filter2)...)
+        if filt_class == 'LDAPFilter_and':
+            parts = [self._convert_filter(f) for f in filt]
+            return "(&" + "".join(parts) + ")"
+
+        # OR filter: (|(filter1)(filter2)...)
+        elif filt_class == 'LDAPFilter_or':
+            parts = [self._convert_filter(f) for f in filt]
+            return "(|" + "".join(parts) + ")"
+
+        # NOT filter: (!(filter))
+        elif filt_class == 'LDAPFilter_not':
+            inner = self._convert_filter(filt.value)
+            return "(!" + inner + ")"
+
+        # Present filter: (attr=*)
+        elif filt_class == 'LDAPFilter_present':
+            attr = self._get_bytes_value(filt)
+            return f"({attr}=*)"
+
+        # Equality match: (attr=value)
+        elif filt_class == 'LDAPFilter_equalityMatch':
+            attr = self._get_bytes_value(filt.attributeDesc)
+            val = self._get_bytes_value(filt.assertionValue)
+            return f"({attr}={val})"
+
+        # Substring filter: (attr=*val*)
+        elif filt_class == 'LDAPFilter_substrings':
+            attr = self._get_bytes_value(filt.type)
+            parts = []
+            if filt.substrings:
+                for sub in filt.substrings:
+                    sub_class = sub.__class__.__name__
+                    sub_val = self._get_bytes_value(sub)
+                    if sub_class == 'LDAPFilter_substrings_initial':
+                        parts.append(f"{sub_val}*")
+                    elif sub_class == 'LDAPFilter_substrings_any':
+                        parts.append(f"*{sub_val}*")
+                    elif sub_class == 'LDAPFilter_substrings_final':
+                        parts.append(f"*{sub_val}")
+            if parts:
+                return f"({attr}={''.join(parts)})"
+            return f"({attr}=*)"
+
+        # Greater or equal: (attr>=value)
+        elif filt_class == 'LDAPFilter_greaterOrEqual':
+            attr = self._get_bytes_value(filt.attributeDesc)
+            val = self._get_bytes_value(filt.assertionValue)
+            return f"({attr}>={val})"
+
+        # Less or equal: (attr<=value)
+        elif filt_class == 'LDAPFilter_lessOrEqual':
+            attr = self._get_bytes_value(filt.attributeDesc)
+            val = self._get_bytes_value(filt.assertionValue)
+            return f"({attr}<={val})"
+
+        # Approx match: (attr~=value)
+        elif filt_class == 'LDAPFilter_approxMatch':
+            attr = self._get_bytes_value(filt.attributeDesc)
+            val = self._get_bytes_value(filt.assertionValue)
+            return f"({attr}~={val})"
+
+        # Fallback - try to get string representation
+        else:
+            logger.debug(f"Unknown filter type: {filt_class}")
+            return "(objectClass=*)"
+
     def _extract_username(self, dn: str) -> str:
         """
         Extract username from DN
@@ -250,26 +338,8 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                 search_filter = "(objectClass=*)"  # default
                 if request.filter is not None:
                     try:
-                        # Try to get text representation of filter
-                        from ldaptor.protocols.pureldap import LDAPFilter_present, LDAPFilter_equalityMatch
-                        if hasattr(request.filter, 'value'):
-                            # Simple present filter like (objectClass=*)
-                            attr = request.filter.value
-                            if isinstance(attr, bytes):
-                                attr = attr.decode('utf-8')
-                            search_filter = f"({attr}=*)"
-                        elif hasattr(request.filter, 'attributeDesc'):
-                            # Equality match filter
-                            attr = request.filter.attributeDesc
-                            val = request.filter.assertionValue
-                            if isinstance(attr, bytes):
-                                attr = attr.decode('utf-8')
-                            if isinstance(val, bytes):
-                                val = val.decode('utf-8')
-                            search_filter = f"({attr}={val})"
-                        else:
-                            # Default to objectClass=*
-                            search_filter = "(objectClass=*)"
+                        search_filter = self._convert_filter(request.filter)
+                        logger.debug(f"Converted filter: {search_filter}")
                     except Exception as filter_err:
                         logger.debug(f"Could not parse filter, using default: {filter_err}")
                         search_filter = "(objectClass=*)"
