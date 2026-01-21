@@ -369,6 +369,14 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                     'msds-generationid', 'msds-cloudextensionattribute1'
                 }
 
+                # Windows FILETIME attributes that must be returned as raw integer strings
+                # These are 64-bit integers representing 100-nanosecond intervals since 1601-01-01
+                filetime_attributes = {
+                    'accountexpires', 'pwdlastset', 'lastlogon', 'lastlogontimestamp',
+                    'badpasswordtime', 'lockouttime', 'lastlogoff', 'creationtime',
+                    'msds-lastsuccessfulinteractivelogontime', 'msds-lastfailedinteractivelogontime'
+                }
+
                 # Send results back
                 for entry in conn.entries:
                     try:
@@ -388,6 +396,8 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                                 attr_vals = []
                                 is_binary = attr_name.lower() in binary_attributes
 
+                                is_filetime = attr_name.lower() in filetime_attributes
+
                                 for i, v in enumerate(values):
                                     if is_binary:
                                         # For binary attributes, use raw_values if available
@@ -406,8 +416,37 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                                                 attr_vals.append(bytes(v))
                                             else:
                                                 attr_vals.append(str(v).encode('utf-8'))
+                                    elif is_filetime:
+                                        # FILETIME attributes - vCenter expects raw integer strings
+                                        # ldap3 may convert these to datetime objects, we need to convert back
+                                        if raw_values and i < len(raw_values):
+                                            # Use raw value if available (should be integer bytes)
+                                            raw_v = raw_values[i]
+                                            if isinstance(raw_v, bytes):
+                                                attr_vals.append(raw_v)
+                                            else:
+                                                attr_vals.append(str(raw_v).encode('utf-8'))
+                                        elif isinstance(v, int):
+                                            # Already an integer
+                                            attr_vals.append(str(v).encode('utf-8'))
+                                        elif hasattr(v, 'timestamp'):
+                                            # datetime object - convert back to FILETIME
+                                            # FILETIME = (unix_timestamp + 11644473600) * 10000000
+                                            try:
+                                                import datetime
+                                                unix_ts = v.timestamp()
+                                                filetime = int((unix_ts + 11644473600) * 10000000)
+                                                attr_vals.append(str(filetime).encode('utf-8'))
+                                                logger.debug(f"Converted {attr_name} datetime {v} to FILETIME {filetime}")
+                                            except Exception as dt_err:
+                                                logger.debug(f"Error converting {attr_name} datetime: {dt_err}")
+                                                # Fallback to 0 (never expires / not set)
+                                                attr_vals.append(b'0')
+                                        else:
+                                            # String or other - pass through
+                                            attr_vals.append(str(v).encode('utf-8'))
                                     else:
-                                        # Non-binary attributes
+                                        # Non-binary, non-filetime attributes
                                         if isinstance(v, str):
                                             attr_vals.append(v.encode('utf-8'))
                                         elif isinstance(v, bytes):
