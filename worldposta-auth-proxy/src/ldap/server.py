@@ -272,6 +272,7 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
 
             # Use asyncio from thread
             loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
             try:
                 result, message = loop.run_until_complete(
                     auth_engine.authenticate(
@@ -282,6 +283,9 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                         mode="auto"
                     )
                 )
+                # Close the API client session to avoid "Unclosed client session" error
+                if auth_engine._api_client:
+                    loop.run_until_complete(auth_engine._api_client.close())
             finally:
                 loop.close()
 
