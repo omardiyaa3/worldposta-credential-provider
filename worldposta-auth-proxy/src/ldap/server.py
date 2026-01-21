@@ -284,8 +284,8 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                     )
                 )
                 # Close the API client session to avoid "Unclosed client session" error
-                if auth_engine._api_client:
-                    loop.run_until_complete(auth_engine._api_client.close())
+                if hasattr(auth_engine, 'api_client') and auth_engine.api_client:
+                    loop.run_until_complete(auth_engine.api_client.close())
             finally:
                 loop.close()
 
