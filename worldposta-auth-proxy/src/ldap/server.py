@@ -351,31 +351,70 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                 logger.debug(f"Proxying search to AD: base={search_base}, filter={search_filter}, scope={search_scope}")
 
                 # Perform search with correct scope
+                # Request all user attrs (*) plus operational attrs (+) which includes objectSid, objectGUID
                 conn.search(
                     search_base=search_base,
                     search_filter=search_filter,
                     search_scope=search_scope,
-                    attributes=['*']
+                    attributes=['*', '+']
                 )
 
                 logger.debug(f"AD returned {len(conn.entries)} entries")
 
+                # Known binary attributes that must be passed as raw bytes
+                binary_attributes = {
+                    'objectsid', 'objectguid', 'msexchmailboxguid', 'msexchmailboxsecuritydescriptor',
+                    'securityidentifier', 'sid', 'sidhistory', 'usercertificate', 'cacertificate',
+                    'logonhours', 'jpegphoto', 'thumbnailphoto', 'usersmimecertificate',
+                    'msds-generationid', 'msds-cloudextensionattribute1'
+                }
+
                 # Send results back
                 for entry in conn.entries:
                     try:
+                        # Debug: log if objectSid is present and its type
+                        if 'objectSid' in entry.entry_attributes:
+                            sid_val = entry['objectSid'].value
+                            sid_raw = entry['objectSid'].raw_values[0] if entry['objectSid'].raw_values else None
+                            logger.debug(f"objectSid for {entry.entry_dn}: value type={type(sid_val)}, raw type={type(sid_raw) if sid_raw else 'None'}, raw len={len(sid_raw) if sid_raw else 0}")
+
                         # Build attributes list
                         attrs = []
                         for attr_name in entry.entry_attributes:
                             values = entry[attr_name].values
+                            raw_values = entry[attr_name].raw_values if hasattr(entry[attr_name], 'raw_values') else None
+
                             if values:
                                 attr_vals = []
-                                for v in values:
-                                    if isinstance(v, str):
-                                        attr_vals.append(v.encode('utf-8'))
-                                    elif isinstance(v, bytes):
-                                        attr_vals.append(v)
+                                is_binary = attr_name.lower() in binary_attributes
+
+                                for i, v in enumerate(values):
+                                    if is_binary:
+                                        # For binary attributes, use raw_values if available
+                                        if raw_values and i < len(raw_values):
+                                            raw_v = raw_values[i]
+                                            if isinstance(raw_v, bytes):
+                                                attr_vals.append(raw_v)
+                                            else:
+                                                attr_vals.append(bytes(raw_v) if raw_v else b'')
+                                        elif isinstance(v, bytes):
+                                            attr_vals.append(v)
+                                        else:
+                                            # Last resort - try to preserve the value
+                                            logger.debug(f"Binary attribute {attr_name} has non-bytes value type: {type(v)}")
+                                            if hasattr(v, '__bytes__'):
+                                                attr_vals.append(bytes(v))
+                                            else:
+                                                attr_vals.append(str(v).encode('utf-8'))
                                     else:
-                                        attr_vals.append(str(v).encode('utf-8'))
+                                        # Non-binary attributes
+                                        if isinstance(v, str):
+                                            attr_vals.append(v.encode('utf-8'))
+                                        elif isinstance(v, bytes):
+                                            attr_vals.append(v)
+                                        else:
+                                            attr_vals.append(str(v).encode('utf-8'))
+
                                 attrs.append((attr_name.encode('utf-8'), attr_vals))
 
                         result_entry = pureldap.LDAPSearchResultEntry(
@@ -385,6 +424,8 @@ class WorldPostaLDAPServer(ldapserver.LDAPServer):
                         reply(result_entry)
                     except Exception as entry_error:
                         logger.debug(f"Error processing entry {entry.entry_dn}: {entry_error}")
+                        import traceback
+                        logger.debug(traceback.format_exc())
 
                 conn.unbind()
 
