@@ -75,6 +75,12 @@ namespace Shared {
 
 		// default - no additional config found
 		if (entry.empty()) {
+			// CPUS_CREDUI is for outgoing connections (e.g., RDP from this machine to another)
+			// Default to DISABLED for CREDUI - we only want 2FA for INCOMING connections
+			if (cpus == CPUS_CREDUI) {
+				ReleaseDebugPrint("Registry entry empty for CPUS_CREDUI - defaulting to DISABLED (return false)");
+				return false;
+			}
 			ReleaseDebugPrint("Registry entry empty - defaulting to ENABLED (return true)");
 			return true;
 		}
