@@ -133,15 +133,34 @@ jobs:
 
     - name: Prepare Auth Proxy package
       run: |
+        set -e  # Exit on any error
+
+        echo "=== Listing worldposta-auth-proxy contents ==="
+        ls -la worldposta-auth-proxy/
+        ls -la worldposta-auth-proxy/src/
+        ls -la worldposta-auth-proxy/config/
+        ls -la worldposta-auth-proxy/scripts/
+
+        echo "=== Creating package ==="
         mkdir -p authproxy-package
-        cp -r worldposta-auth-proxy/src authproxy-package/
-        cp worldposta-auth-proxy/requirements.txt authproxy-package/
-        cp worldposta-auth-proxy/config/authproxy.cfg.example authproxy-package/
-        cp worldposta-auth-proxy/scripts/install.sh authproxy-package/
-        cp worldposta-auth-proxy/scripts/uninstall.sh authproxy-package/
-        cp worldposta-auth-proxy/scripts/worldposta-authproxy.service authproxy-package/
+
+        # Copy with verbose output
+        cp -rv worldposta-auth-proxy/src authproxy-package/
+        cp -v worldposta-auth-proxy/requirements.txt authproxy-package/
+        cp -v worldposta-auth-proxy/config/authproxy.cfg.example authproxy-package/
+        cp -v worldposta-auth-proxy/scripts/install.sh authproxy-package/
+        cp -v worldposta-auth-proxy/scripts/uninstall.sh authproxy-package/
+        cp -v worldposta-auth-proxy/scripts/worldposta-authproxy.service authproxy-package/
+
         chmod +x authproxy-package/*.sh
+
+        echo "=== Package contents before tar ==="
+        ls -la authproxy-package/
+
         tar -czvf WorldPosta-Auth-Proxy.tar.gz -C authproxy-package .
+
+        echo "=== Verifying tar contents ==="
+        tar -tzvf WorldPosta-Auth-Proxy.tar.gz
 
     - name: Upload Auth Proxy Artifact
       uses: actions/upload-artifact@v4
